@@ -1,0 +1,22 @@
+{
+  "source_url": "https://geoportalgasolineras.es/geoportal/resources/files/preciosEESS_es.xls",
+  "snapshot": "07/05/2026 11:00",
+  "fetched_at": "2026-05-07T09:29:16+00:00",
+  "total_rows": 11422,
+  "fuels": {
+    "gasolina_95_e5": {
+      "label": "Precio gasolina 95 E5",
+      "stations": 10854,
+      "average_eur_per_l": 1.5504,
+      "min": 1.249,
+      "max": 2.05
+    },
+    "gasoleo_a": {
+      "label": "Precio gasóleo A",
+      "stations": 11211,
+      "average_eur_per_l": 1.7398,
+      "min": 1.399,
+      "max": 2.1
+    }
+  }
+}

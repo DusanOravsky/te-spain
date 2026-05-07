@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spain fuel prices — averages</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --muted: #94a3b8; --text: #e2e8f0;
+    --accent: #38bdf8; --accent-2: #f59e0b; --ok: #22c55e; --err: #ef4444;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  header {
+    max-width: 900px; margin: 0 auto 1.5rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  h1 { font-size: 1.4rem; margin: 0; font-weight: 600; }
+  button {
+    background: var(--accent); color: #082f49; border: 0;
+    padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600;
+    cursor: pointer; font-size: 0.95rem;
+  }
+  button.ghost {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    padding: 0.5rem 0.9rem; font-weight: 500;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  main { max-width: 900px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .card h2 {
+    font-size: 0.85rem; font-weight: 500; color: var(--muted);
+    margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .price { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.02em; }
+  .price .unit { font-size: 1rem; color: var(--muted); font-weight: 500; margin-left: 0.25rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+  .accent-1 .price { color: var(--accent); }
+  .accent-2 .price { color: var(--accent-2); }
+  .empty { color: var(--muted); font-style: italic; }
+  .footer { color: var(--muted); font-size: 0.85rem; margin-top: 1.5rem; }
+  .footer a { color: var(--accent); }
+  .status { font-size: 0.85rem; color: var(--muted); }
+  .status.err { color: var(--err); }
+  .status.ok { color: var(--ok); }
+  .controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+  .dlg-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .dlg-backdrop.show { display: flex; }
+  .dlg {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.5rem; width: 100%; max-width: 480px;
+  }
+  .dlg h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+  .dlg p { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
+  .dlg label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+  .dlg input {
+    width: 100%; padding: 0.5rem 0.65rem; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+    font: inherit; margin-bottom: 0.85rem;
+  }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+  code { background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Spain fuel prices — averages</h1>
+  <div class="controls">
+    <span id="status" class="status"></span>
+    <button id="refresh">Download prices</button>
+    <button id="settings" class="ghost" title="Configure GitHub repo + token">⚙</button>
+  </div>
+</header>
+
+<main>
+  <div class="cards">
+    <div class="card accent-1">
+      <h2>Gasolina 95 E5</h2>
+      <div class="price" id="g95-price"><span class="empty">—</span></div>
+      <div class="meta" id="g95-meta"></div>
+    </div>
+    <div class="card accent-2">
+      <h2>Gasóleo A</h2>
+      <div class="price" id="da-price"><span class="empty">—</span></div>
+      <div class="meta" id="da-meta"></div>
+    </div>
+  </div>
+  <div class="footer" id="footer"></div>
+</main>
+
+<div class="dlg-backdrop" id="dlg-backdrop">
+  <div class="dlg">
+    <h3>GitHub configuration</h3>
+    <p>
+      The button triggers the <code>refresh.yml</code> workflow in your repo.
+      Stored locally in your browser only. Use a fine-grained PAT scoped to
+      this repo with <code>actions: write</code> + <code>contents: read</code>.
+    </p>
+    <label for="repo-input">Repository (<code>owner/repo</code>)</label>
+    <input id="repo-input" type="text" placeholder="your-user/te_spain" autocomplete="off" />
+    <label for="token-input">Personal access token</label>
+    <input id="token-input" type="password" placeholder="github_pat_..." autocomplete="off" />
+    <label for="branch-input">Branch (default: main)</label>
+    <input id="branch-input" type="text" placeholder="main" autocomplete="off" />
+    <div class="dlg-actions">
+      <button id="dlg-cancel" class="ghost">Cancel</button>
+      <button id="dlg-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WORKFLOW_FILE = "refresh.yml";
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+const numFmt = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
+const intFmt = new Intl.NumberFormat("es-ES");
+
+function $(id) { return document.getElementById(id); }
+function setStatus(msg, cls = "") {
+  $("status").textContent = msg;
+  $("status").className = "status" + (cls ? " " + cls : "");
+}
+
+function getCfg() {
+  const repo = localStorage.getItem("gh.repo") || "";
+  const token = localStorage.getItem("gh.token") || "";
+  const branch = localStorage.getItem("gh.branch") || "main";
+  return { repo, token, branch };
+}
+function setCfg(cfg) {
+  localStorage.setItem("gh.repo", cfg.repo);
+  localStorage.setItem("gh.token", cfg.token);
+  localStorage.setItem("gh.branch", cfg.branch);
+}
+
+function renderFuel(elPriceId, elMetaId, fuel) {
+  const priceEl = $(elPriceId);
+  const metaEl = $(elMetaId);
+  if (!fuel || fuel.average_eur_per_l == null) {
+    priceEl.innerHTML = '<span class="empty">no data</span>';
+    metaEl.textContent = "";
+    return;
+  }
+  priceEl.innerHTML = `${numFmt.format(fuel.average_eur_per_l)}<span class="unit">€/L</span>`;
+  metaEl.textContent =
+    `${intFmt.format(fuel.stations)} stations · `
+    + `min ${numFmt.format(fuel.min)} · max ${numFmt.format(fuel.max)}`;
+}
+
+function render(data) {
+  renderFuel("g95-price", "g95-meta", data.fuels?.gasolina_95_e5);
+  renderFuel("da-price", "da-meta", data.fuels?.gasoleo_a);
+  const parts = [];
+  if (data.snapshot) parts.push(`Source snapshot: ${data.snapshot}`);
+  if (data.fetched_at) parts.push(`Refreshed: ${new Date(data.fetched_at).toLocaleString()}`);
+  if (data.source_url) parts.push(`<a href="${data.source_url}" target="_blank" rel="noopener">source</a>`);
+  $("footer").innerHTML = parts.join(" · ");
+}
+
+async function loadData() {
+  try {
+    const r = await fetch(`data.json?_=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`data.json: ${r.status}`);
+    render(await r.json());
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function ghFetch(path, opts = {}) {
+  const { token } = getCfg();
+  const r = await fetch(`https://api.github.com${path}`, {
+    ...opts,
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      Authorization: `Bearer ${token}`,
+      ...(opts.headers || {}),
+    },
+  });
+  return r;
+}
+
+async function dispatchWorkflow() {
+  const { repo, branch } = getCfg();
+  const r = await ghFetch(
+    `/repos/${repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
+    { method: "POST", body: JSON.stringify({ ref: branch }) }
+  );
+  if (!r.ok) {
+    let msg = `dispatch failed: ${r.status}`;
+    try { msg += " — " + (await r.json()).message; } catch {}
+    throw new Error(msg);
+  }
+}
+
+async function findLatestRun(sinceMs) {
+  const { repo, branch } = getCfg();
+  const r = await ghFetch(
+    `/repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=5`
+  );
+  if (!r.ok) throw new Error(`runs query failed: ${r.status}`);
+  const data = await r.json();
+  for (const run of data.workflow_runs || []) {
+    if (new Date(run.created_at).getTime() >= sinceMs - 5000) return run;
+  }
+  return null;
+}
+
+async function pollForCompletion(sinceMs) {
+  const start = Date.now();
+  let run = null;
+  while (Date.now() - start < POLL_TIMEOUT_MS) {
+    await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
+    run = await findLatestRun(sinceMs);
+    if (!run) {
+      setStatus("Waiting for workflow to start…");
+      continue;
+    }
+    setStatus(`Workflow ${run.status}…`);
+    if (run.status === "completed") return run;
+  }
+  throw new Error("Timed out waiting for workflow.");
+}
+
+async function refresh() {
+  const { repo, token } = getCfg();
+  if (!repo || !token) {
+    openSettings();
+    setStatus("Set repo + token first.", "err");
+    return;
+  }
+  const btn = $("refresh");
+  btn.disabled = true;
+  try {
+    setStatus("Triggering workflow…");
+    const dispatchedAt = Date.now();
+    await dispatchWorkflow();
+
+    const run = await pollForCompletion(dispatchedAt);
+    if (run.conclusion !== "success") {
+      throw new Error(`Workflow finished with status: ${run.conclusion}`);
+    }
+    setStatus("Loading new data…");
+    // Pages deploy is triggered by the data.json commit; allow a moment for it.
+    let ok = false;
+    for (let i = 0; i < 10 && !ok; i++) {
+      await new Promise((res) => setTimeout(res, 3000));
+      ok = await loadData();
+    }
+    if (!ok) throw new Error("Workflow finished but data.json didn't update yet. Try reloading in a minute.");
+    setStatus("Updated.", "ok");
+  } catch (e) {
+    setStatus(`Failed: ${e.message}`, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function openSettings() {
+  const cfg = getCfg();
+  $("repo-input").value = cfg.repo;
+  $("token-input").value = cfg.token;
+  $("branch-input").value = cfg.branch;
+  $("dlg-backdrop").classList.add("show");
+}
+function closeSettings() { $("dlg-backdrop").classList.remove("show"); }
+
+$("settings").addEventListener("click", openSettings);
+$("dlg-cancel").addEventListener("click", closeSettings);
+$("dlg-save").addEventListener("click", () => {
+  setCfg({
+    repo: $("repo-input").value.trim(),
+    token: $("token-input").value.trim(),
+    branch: $("branch-input").value.trim() || "main",
+  });
+  closeSettings();
+  setStatus("Saved.", "ok");
+});
+$("refresh").addEventListener("click", refresh);
+
+loadData().then((ok) => {
+  if (!ok) setStatus("No data yet — click Download prices.", "");
+});
+</script>
+
+</body>
+</html>

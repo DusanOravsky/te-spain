@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Downloaded source file (refresh.py removes it, but ignore just in case)
+preciosEESS_es.xls
+
+# Local working files / internal spreadsheets — not for the repo
+docs/
+*.xlsx
+*.xls
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

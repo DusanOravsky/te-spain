@@ -1,0 +1,9 @@
+{
+  "source_url": "https://geoportalgasolineras.es/geoportal/resources/files/preciosEESS_es.xls",
+  "header_row": 3,
+  "snapshot_cell": [0, 1],
+  "columns": {
+    "gasolina_95_e5": "Precio gasolina 95 E5",
+    "gasoleo_a": "Precio gasóleo A"
+  }
+}
