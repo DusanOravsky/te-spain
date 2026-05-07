@@ -36,8 +36,27 @@ def to_float(v):
 
 
 def download(url: str, dest: Path) -> None:
+    """Download URL → dest via curl (handles AIA / intermediate fetching reliably)."""
+    import shutil
+    import subprocess
+
+    if shutil.which("curl"):
+        subprocess.run(
+            ["curl", "-fsSL", "--retry", "3", "--max-time", "120",
+             "-A", "te_spain/0.1", "-o", str(dest), url],
+            check=True,
+        )
+        return
+
+    # Fallback: urllib with certifi if curl is unavailable.
+    try:
+        import ssl
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ctx = None
     req = urllib.request.Request(url, headers={"User-Agent": "te_spain/0.1"})
-    with urllib.request.urlopen(req, timeout=120) as r, dest.open("wb") as f:
+    with urllib.request.urlopen(req, timeout=120, context=ctx) as r, dest.open("wb") as f:
         f.write(r.read())
 
 
