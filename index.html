@@ -172,8 +172,13 @@ function render(data) {
 }
 
 async function loadData() {
+  const { repo, token, branch } = getCfg();
+  if (!repo || !token) return false;
   try {
-    const r = await fetch(`data.json?_=${Date.now()}`, { cache: "no-store" });
+    const r = await ghFetch(
+      `/repos/${repo}/contents/data.json?ref=${encodeURIComponent(branch)}`,
+      { headers: { Accept: "application/vnd.github.raw" }, cache: "no-store" }
+    );
     if (!r.ok) throw new Error(`data.json: ${r.status}`);
     render(await r.json());
     return true;
@@ -257,13 +262,12 @@ async function refresh() {
       throw new Error(`Workflow finished with status: ${run.conclusion}`);
     }
     setStatus("Loading new data…");
-    // Pages deploy is triggered by the data.json commit; allow a moment for it.
     let ok = false;
-    for (let i = 0; i < 10 && !ok; i++) {
-      await new Promise((res) => setTimeout(res, 3000));
+    for (let i = 0; i < 5 && !ok; i++) {
+      await new Promise((res) => setTimeout(res, 1500));
       ok = await loadData();
     }
-    if (!ok) throw new Error("Workflow finished but data.json didn't update yet. Try reloading in a minute.");
+    if (!ok) throw new Error("Workflow finished but data.json didn't load. Try clicking again in a minute.");
     setStatus("Updated.", "ok");
   } catch (e) {
     setStatus(`Failed: ${e.message}`, "err");
@@ -294,9 +298,16 @@ $("dlg-save").addEventListener("click", () => {
 });
 $("refresh").addEventListener("click", refresh);
 
-loadData().then((ok) => {
-  if (!ok) setStatus("No data yet — click Download prices.", "");
-});
+(async () => {
+  const { repo, token } = getCfg();
+  if (!repo || !token) {
+    setStatus("Click ⚙ to configure repo + token.", "");
+    return;
+  }
+  const ok = await loadData();
+  if (!ok) setStatus("Configured. Click Download prices to fetch.", "");
+  else setStatus("Loaded latest data.", "ok");
+})();
 </script>
 
 </body>

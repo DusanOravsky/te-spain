@@ -10,26 +10,29 @@ The user runs this once a month and uses the averages as input for a downstream 
 
 ## Architecture
 
-The browser cannot fetch the upstream .xls directly — `geoportalgasolineras.es` does not send CORS headers, and the user's machine has no Python/exe permissions. Instead, the work happens in **GitHub Actions** and the page reads the result from the same origin.
+The browser cannot fetch the upstream .xls directly — `geoportalgasolineras.es` does not send CORS headers, and the user's Windows machine has no Python/exe permissions. Instead, the work happens in **GitHub Actions** and the page (delivered as a single HTML file the user double-clicks) reads the result via the GitHub API.
 
 ```
-   ┌────────────────────────┐    ┌─────────────────────────────────┐
-   │  GitHub Pages          │    │  GitHub Actions                 │
-   │  index.html  data.json │◄───│  refresh.yml → refresh.py       │
-   └────────────┬───────────┘    │   downloads .xls                │
-                │                │   computes averages             │
-        click "Download"         │   commits data.json             │
-                │                └─────────────────────────────────┘
-                ▼                                ▲
-   POST /repos/.../dispatches  ───────────────────
-        (user's PAT in localStorage)
+   user's PC                                GitHub
+   ┌──────────────────┐                    ┌─────────────────────────────────┐
+   │  index.html      │   dispatch (POST)  │  refresh.yml → refresh.py       │
+   │  (file:// open)  │ ─────────────────► │   downloads .xls                │
+   │                  │                    │   computes averages             │
+   │  button click    │                    │   commits data.json to main     │
+   │                  │   GET contents     │                                 │
+   │                  │ ◄───────────────── │  /repos/.../contents/data.json  │
+   └──────────────────┘                    └─────────────────────────────────┘
+            ▲
+            │ user's fine-grained PAT in localStorage
+            │ (Actions: write, Contents: read)
 ```
 
 - **`refresh.py`** — server-side script. Downloads `preciosEESS_es.xls`, parses the two configured columns (skipping empty cells), writes `data.json`. Reads everything tunable from `config.json`.
 - **`config.json`** — source URL, header row index, snapshot cell, and column-name → key map. **Edit this if the upstream format changes — never hardcode values back into `refresh.py`.** The script fails loudly with a "Column(s) not found" error pointing here.
 - **`.github/workflows/refresh.yml`** — runs `refresh.py` on `workflow_dispatch` (button click) and on a monthly cron (1st @ 06:00 UTC). Commits `data.json` only if it changed. Single-flight via `concurrency: refresh`.
-- **`.github/workflows/pages.yml`** — deploys `index.html` + `data.json` to GitHub Pages on push to `main` (only when those files change).
-- **`index.html`** — single static file. On load: fetches `data.json` and renders. On "Download prices" click: dispatches the workflow via the GitHub API, polls `/actions/runs` until completion, then re-fetches `data.json`. The PAT and repo are stored in `localStorage` (set via the ⚙ button) — the page itself contains **no** secrets and is safe to publish.
+- **`index.html`** — single static file. Opened from the user's filesystem (no server). On load with credentials configured: fetches `data.json` via the GitHub Contents API and renders. On "Download prices" click: dispatches the workflow, polls `/actions/runs` until completion, then re-fetches `data.json`. The PAT and repo are stored in `localStorage` (set via the ⚙ button). The HTML file itself contains **no** secrets and is safe to email or share.
+
+**Why the GitHub API instead of `raw.githubusercontent.com`?** `raw.githubusercontent.com` doesn't send `Access-Control-Allow-Origin`, so a `file://`-loaded page can't fetch from it. The Contents API (`api.github.com`) does, and the same PAT works for both dispatch and read.
 
 ## Source-file quirks worth knowing
 
@@ -46,9 +49,9 @@ Spanish locale: comma is the decimal separator (`1,449`). `to_float()` normalize
 ## Setup (one-time, per deployment)
 
 1. Push this repo to GitHub.
-2. **Settings → Pages → Source: GitHub Actions.**
-3. **Settings → Actions → General → Workflow permissions: Read and write.**
-4. Create a fine-grained PAT scoped to this repo with `actions: write` + `contents: read`. Open the Pages URL, click ⚙, paste `owner/repo` + the PAT.
+2. **Settings → Actions → General → Workflow permissions: Read and write.**
+3. Create a fine-grained PAT scoped to this repo with **Actions: Read and write** + **Contents: Read-only**. Org PATs may need admin approval.
+4. Email the user `index.html`. They open it (double-click → opens in browser via `file://`), click ⚙, paste `owner/repo` + the PAT.
 
 ## Commands
 
