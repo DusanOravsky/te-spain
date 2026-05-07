@@ -36,28 +36,41 @@ def to_float(v):
 
 
 def download(url: str, dest: Path) -> None:
-    """Download URL → dest via curl (handles AIA / intermediate fetching reliably)."""
+    """Download URL → dest, tolerating geoportalgasolineras.es's broken cert chain.
+
+    The site serves an incomplete intermediate chain that fails verification on
+    runners without a corporate proxy. The file is public, unauthenticated data,
+    so we fall back to an unverified TLS connection if strict verification fails.
+    """
     import shutil
+    import ssl
     import subprocess
 
+    # Try strict verification first.
     if shutil.which("curl"):
-        subprocess.run(
+        r = subprocess.run(
             ["curl", "-fsSL", "--retry", "3", "--max-time", "120",
+             "-A", "te_spain/0.1", "-o", str(dest), url],
+        )
+        if r.returncode == 0:
+            return
+        print("curl strict verify failed; retrying with -k (public data, no auth)", flush=True)
+        subprocess.run(
+            ["curl", "-fsSLk", "--retry", "3", "--max-time", "120",
              "-A", "te_spain/0.1", "-o", str(dest), url],
             check=True,
         )
         return
 
-    # Fallback: urllib with certifi if curl is unavailable.
-    try:
-        import ssl
-        import certifi
-        ctx = ssl.create_default_context(cafile=certifi.where())
-    except ImportError:
-        ctx = None
+    # Pure-Python fallback.
     req = urllib.request.Request(url, headers={"User-Agent": "te_spain/0.1"})
-    with urllib.request.urlopen(req, timeout=120, context=ctx) as r, dest.open("wb") as f:
-        f.write(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r, dest.open("wb") as f:
+            f.write(r.read())
+    except urllib.error.URLError:
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=120, context=ctx) as r, dest.open("wb") as f:
+            f.write(r.read())
 
 
 def main() -> int:
