@@ -2,73 +2,68 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this project does
+## What this project is
 
-Tiny web app that surfaces the average **Precio gasolina 95 E5** and **Precio gasóleo A** from the Spanish national fuel-price spreadsheet (`preciosEESS_es.xls`) published by `geoportalgasolineras.es`.
+A single static `index.html` the user opens locally (double-click → browser via `file://`). It builds the monthly fuel-price liquidation in three steps the user does once a month:
 
-The user runs this once a month and uses the averages as input for a downstream workflow (other steps not in scope).
+1. Pick the vendor's `Flota Viva Covestro <date>.xlsx` (from Ayvens).
+2. Pick the running `Liquidaciones de combustible …xlsx`.
+3. Pick `preciosEESS_es.xls` downloaded from `geoportalgasolineras.es`.
 
-## Architecture
+The page does everything in-browser via SheetJS (CDN):
 
-The browser cannot fetch the upstream .xls directly — `geoportalgasolineras.es` does not send CORS headers, and the user's Windows machine has no Python/exe permissions. Instead, the work happens in **GitHub Actions** and the page (delivered as a single HTML file the user double-clicks) reads the result via the GitHub API.
+- Averages **Precio gasolina 95 E5** and **Precio gasóleo A** across every station that reports a price.
+- Replaces the `flota` sheet of Liquidaciones with the vendor's fleet rows (columns B..P, header on row 10).
+- Computes consumption averages directly from the vendor file (replacing what `consumo` pivot used to provide via `GETPIVOTDATA`):
+  - Diesel avg → rows where `Tipo Combustible` contains "Diésel"
+  - Gasolina avg → rows where `Tipo Combustible` contains "Gasolina"
+- Finds the email-snippet header row (`Fecha del cálculo` in column A, scanned bottom-up) on the `Liquidaciones de combustible` sheet and overwrites the row immediately below it with: A=date, H=diesel price, I=diesel consumption, J=`=H`, K=`=I*J/100`, L=gasolina price, M=gasolina consumption, N=`=L`, O=`=M*N/100`.
+- Outputs (a) a downloadable `<original>_updated.xlsx` and (b) a copy-paste email draft (greeting → header+row tab-separated → tarifas summary → "Thanks").
 
-```
-   user's PC                                GitHub
-   ┌──────────────────┐                    ┌─────────────────────────────────┐
-   │  index.html      │   dispatch (POST)  │  refresh.yml → refresh.py       │
-   │  (file:// open)  │ ─────────────────► │   downloads .xls                │
-   │                  │                    │   computes averages             │
-   │  button click    │                    │   commits data.json to main     │
-   │                  │   GET contents     │                                 │
-   │                  │ ◄───────────────── │  /repos/.../contents/data.json  │
-   └──────────────────┘                    └─────────────────────────────────┘
-            ▲
-            │ user's fine-grained PAT in localStorage
-            │ (Actions: write, Contents: read)
-```
+## Why this shape
 
-- **`refresh.py`** — server-side script. Downloads `preciosEESS_es.xls`, parses the two configured columns (skipping empty cells), writes `data.json`. Reads everything tunable from `config.json`.
-- **`config.json`** — source URL, header row index, snapshot cell, and column-name → key map. **Edit this if the upstream format changes — never hardcode values back into `refresh.py`.** The script fails loudly with a "Column(s) not found" error pointing here.
-- **`.github/workflows/refresh.yml`** — runs `refresh.py` on `workflow_dispatch` (button click) and on a monthly cron (1st @ 06:00 UTC). If `data.json` changed, force-pushes it to a `refresh-data` branch, opens or updates a PR against `main`, and enables auto-merge (squash). The page polls `main` until the merge lands. **Why PR mode:** the Covestro org enforces `cov-secure-policy` on `main` (PRs required + CodeQL gate); a direct push from the bot is rejected. Single-flight via `concurrency: refresh`.
-- **`index.html`** — single static file. Opened from the user's filesystem (no server). On load with credentials configured: fetches `data.json` via the GitHub Contents API and renders. On "Download prices" click: dispatches the workflow, polls `/actions/runs` until completion, then re-fetches `data.json`. The PAT and repo are stored in `localStorage` (set via the ⚙ button). The HTML file itself contains **no** secrets and is safe to email or share.
+Every other shape was tried and failed against Covestro constraints:
 
-**Why the GitHub API instead of `raw.githubusercontent.com`?** `raw.githubusercontent.com` doesn't send `Access-Control-Allow-Origin`, so a `file://`-loaded page can't fetch from it. The Contents API (`api.github.com`) does, and the same PAT works for both dispatch and read.
+- **Browser fetches the .xls directly** — no CORS on `geoportalgasolineras.es`, browsers block it.
+- **Local Python server / .exe** — Python isn't installed on the user's PC and .exes are blocked.
+- **GitHub Actions + Pages** — works mechanically but `cov-secure-policy` requires PR + CodeQL on `main`, blocking the bot from committing `data.json`. PR auto-merge would need a separate bot account, which contradicts the policy's intent.
+- **Excel + Power Query** — works (and `fuel_prices.xlsx` is the proof), but the user wanted a web app for the broader workflow.
 
-## Source-file quirks worth knowing
+The "user picks the .xls themselves" version is the only one that survives all constraints.
 
-The upstream is real BIFF (CDFV2 Microsoft Excel), not .xlsx — requires `xlrd` 2.x. Do not "upgrade" to a version that drops .xls support, and do not switch to `openpyxl` (it can't read this format).
+## Why a few things look the way they do
 
-Spanish locale: comma is the decimal separator (`1,449`). `to_float()` normalizes `,` → `.`. Empty cells (stations not selling that fuel) are skipped from the average — they are not zero.
+- **Cell-address reads, not `sheet_to_json`.** SheetJS's `sheet_to_json({header: 1})` strips leading empty rows, so a header on row 10 becomes index 9 only sometimes. Reading by `XLSX.utils.encode_cell({r, c})` is unaffected.
+- **Pivot bypass.** The `consumo` sheet's pivot table cells (`E8`, `E17`) feed `I` and `M` of the new month row via `GETPIVOTDATA`. SheetJS cannot rebuild Excel pivots — it can only write values. So the page recomputes the same averages from the vendor file and writes them as plain numbers. Pivot remains in the workbook for backward compatibility but is no longer load-bearing.
+- **The email "header row" lives mid-sheet.** Layout is: history block top → snippet header (`Fecha del cálculo` etc.) → exactly one current-month data row. The user copies header+row into Outlook each month. We locate the header by scanning column A from the bottom up and overwrite the row below it.
+- **No `data.json`, no GitHub Actions, no hosting.** Everything was deleted; previous incarnations are in git history.
 
-## Why this shape (constraints that ruled out simpler options)
+## Files
 
-- The user's Windows machine: **no Python, no .exe, no manual file downloads.** Rules out a local Python server, PyInstaller bundles, and the user-uploads-the-xls flow.
-- The geoportal sends no CORS headers → static HTML can't fetch the .xls directly. Rules out a pure-static SPA.
-- A self-hosted CORS proxy would also work, but GitHub Pages + Actions removes the need to operate any infrastructure.
+- `index.html` — the entire app. SheetJS loaded from `cdn.jsdelivr.net`.
+- `fuel_prices.xlsx` — standalone Power Query workbook (the user already wired this up). Independent of `index.html`; kept because it's useful as a quick price check.
+- `docs/` — local-only test fixtures (vendor file, current Liquidaciones, sample preciosEESS .xls). **Gitignored** — contains internal Covestro data.
 
-## Setup (one-time, per deployment)
+## How to test changes
 
-1. Push this repo to GitHub.
-2. **Settings → Actions → General → Workflow permissions: Read and write.**
-3. Create a fine-grained PAT scoped to this repo with **Actions: Read and write** + **Contents: Read-only**. Org PATs may need admin approval.
-4. Email the user `index.html`. They open it (double-click → opens in browser via `file://`), click ⚙, paste `owner/repo` + the PAT.
-
-## Commands
+There's no harness in the repo. To validate end-to-end, mirror the browser logic in Node + SheetJS and run against `docs/`:
 
 ```bash
-# run the refresh script locally (writes data.json)
-pip install -r requirements.txt
-python refresh.py
-
-# preview the page locally (data.json must exist)
-python -m http.server 8000
+# from /tmp:
+npm install xlsx@0.18.5
+node test_build.mjs   # see /tmp/test_build.mjs in the project author's session for the template
 ```
 
-No tests, no linter, no build step.
+The expected output (against the snapshot in `docs/`):
+- Diesel price avg ≈ 1.7345 €/L, gasolina ≈ 1.5248 €/L
+- Diesel consumption ≈ 4.756, gasolina ≈ 5.788 — these match `consumo!E8` / `E17` exactly
+- 45 fleet rows pasted into `flota`
+- Snippet header row 144, new month row written at row 145
+
+If those numbers drift, either the vendor file format changed or the price-file format changed — check the column-name constants near the top of `index.html`.
 
 ## Out of scope / known gaps
 
-- The user mentioned "a few other steps" after the averages — not implemented; structure deliberately doesn't anticipate them.
-- No history / month-over-month series. Each refresh overwrites `data.json`. Adding history would mean appending to a JSON file or keeping commits as the timeline.
-- The frontend hardcodes the two fuel keys (`gasolina_95_e5`, `gasoleo_a`); making it data-driven from `config.json` is a small additive change, not done by design.
-- Token lives in the user's browser `localStorage`. If they use multiple browsers, they re-enter it. If the token leaks, worst case is someone else can also click the button — they cannot push code or read other repo secrets (fine-grained scope).
+- **No history block update.** The previous month row (`143`) stays untouched. If the workflow eventually needs to "promote" the current row into history before adding the new one, that's a small additive change in the section that finds the snippet header.
+- **CDN dependency.** SheetJS is loaded from jsdelivr at runtime. If the user's network blocks CDNs, vendoring `xlsx.full.min.js` next to `index.html` and pointing the `<script src>` at it would fix that.
+- **Date format.** Dates from the vendor file are written to `flota` as Excel serial numbers — Excel renders them correctly with its date format applied (which it already has). If the column ever shows up as a number, apply a date format to those cells in Excel.

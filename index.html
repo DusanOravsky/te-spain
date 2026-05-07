@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Spain fuel prices — averages</title>
+<title>Liquidaciones — month-end builder</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0f172a; --card: #1e293b; --muted: #94a3b8; --text: #e2e8f0;
@@ -16,324 +17,630 @@
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     background: var(--bg); color: var(--text); min-height: 100vh;
   }
-  header {
-    max-width: 900px; margin: 0 auto 1.5rem;
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  header { max-width: 980px; margin: 0 auto 1.5rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 0.25rem; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 0.9rem; }
+  .sub a { color: var(--accent); }
+  main { max-width: 980px; margin: 0 auto; }
+
+  .step {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
   }
-  h1 { font-size: 1.4rem; margin: 0; font-weight: 600; }
-  button {
-    background: var(--accent); color: #082f49; border: 0;
-    padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600;
-    cursor: pointer; font-size: 0.95rem;
-  }
-  button.ghost {
-    background: transparent; color: var(--muted); border: 1px solid var(--border);
-    padding: 0.5rem 0.9rem; font-weight: 500;
-  }
-  button:hover:not(:disabled) { filter: brightness(1.08); }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  main { max-width: 900px; margin: 0 auto; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-  .card h2 {
-    font-size: 0.85rem; font-weight: 500; color: var(--muted);
+  .step h2 {
+    font-size: 0.8rem; font-weight: 500; color: var(--muted);
     margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
   }
-  .price { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.02em; }
-  .price .unit { font-size: 1rem; color: var(--muted); font-weight: 500; margin-left: 0.25rem; }
-  .meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
-  .accent-1 .price { color: var(--accent); }
-  .accent-2 .price { color: var(--accent-2); }
-  .empty { color: var(--muted); font-style: italic; }
-  .footer { color: var(--muted); font-size: 0.85rem; margin-top: 1.5rem; }
-  .footer a { color: var(--accent); }
-  .status { font-size: 0.85rem; color: var(--muted); }
+  .step .label { font-size: 1rem; font-weight: 500; margin-bottom: 0.5rem; }
+  .step .hint { color: var(--muted); font-size: 0.85rem; }
+  .step .picked { color: var(--ok); font-size: 0.9rem; margin-top: 0.4rem; word-break: break-all; }
+  .step input[type=file] { display: none; }
+  .step button.pick {
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    padding: 0.5rem 0.9rem; border-radius: 8px; cursor: pointer;
+    font: inherit; font-size: 0.9rem; font-weight: 500;
+  }
+  .step button.pick:hover { background: rgba(56,189,248,0.1); }
+
+  .row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .row > .grow { flex: 1; min-width: 200px; }
+
+  .actions {
+    display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0;
+  }
+  .actions button {
+    background: var(--accent); color: #082f49; border: 0;
+    padding: 0.7rem 1.2rem; border-radius: 8px; cursor: pointer;
+    font: inherit; font-size: 0.95rem; font-weight: 600;
+  }
+  .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .actions button.ghost {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  .status { font-size: 0.9rem; min-height: 1.4em; padding: 0.5rem 0; }
   .status.err { color: var(--err); }
   .status.ok { color: var(--ok); }
-  .controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
-  .dlg-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-    display: none; align-items: center; justify-content: center; padding: 1rem;
-  }
-  .dlg-backdrop.show { display: flex; }
-  .dlg {
+  .preview {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 1.5rem; width: 100%; max-width: 480px;
+    padding: 1.25rem 1.5rem; margin-top: 1rem;
   }
-  .dlg h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
-  .dlg p { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
-  .dlg label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
-  .dlg input {
-    width: 100%; padding: 0.5rem 0.65rem; background: var(--bg);
-    border: 1px solid var(--border); border-radius: 6px; color: var(--text);
-    font: inherit; margin-bottom: 0.85rem;
+  .preview h2 {
+    font-size: 0.8rem; font-weight: 500; color: var(--muted);
+    margin: 0 0 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
   }
-  .dlg-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-  code { background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; }
+  .stat .lbl { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .val { font-size: 1.4rem; font-weight: 700; margin-top: 0.2rem; }
+  .stat.diesel .val { color: var(--accent); }
+  .stat.gasoline .val { color: var(--accent-2); }
+
+  .snippet {
+    font-family: Consolas, Menlo, monospace; font-size: 0.85rem;
+    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.85rem 1rem; white-space: pre; overflow-x: auto; line-height: 1.6;
+    user-select: all;
+  }
+
+  .field-grid {
+    display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin-bottom: 1rem;
+  }
+  .field-grid label { color: var(--muted); font-size: 0.85rem; align-self: center; }
+  .field-grid input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 0.4rem 0.6rem; font: inherit;
+  }
+  .num { color: var(--accent); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Spain fuel prices — averages</h1>
-  <div class="controls">
-    <span id="status" class="status"></span>
-    <button id="refresh">Download prices</button>
-    <button id="settings" class="ghost" title="Configure GitHub repo + token">⚙</button>
+  <h1>Liquidaciones — month-end builder</h1>
+  <div class="sub">
+    Pick the three monthly files; the app pastes the new fleet, computes price + consumption averages,
+    appends the new row to <em>Liquidaciones de combustible</em>, and gives you the email snippet.
+    All processing happens in your browser.
   </div>
 </header>
 
 <main>
-  <div class="cards">
-    <div class="card accent-1">
-      <h2>Gasolina 95 E5</h2>
-      <div class="price" id="g95-price"><span class="empty">—</span></div>
-      <div class="meta" id="g95-meta"></div>
-    </div>
-    <div class="card accent-2">
-      <h2>Gasóleo A</h2>
-      <div class="price" id="da-price"><span class="empty">—</span></div>
-      <div class="meta" id="da-meta"></div>
-    </div>
-  </div>
-  <div class="footer" id="footer"></div>
-</main>
 
-<div class="dlg-backdrop" id="dlg-backdrop">
-  <div class="dlg">
-    <h3>GitHub configuration</h3>
-    <p>
-      The button triggers the <code>refresh.yml</code> workflow in your repo.
-      Stored locally in your browser only. Use a fine-grained PAT scoped to
-      this repo with <code>actions: write</code> + <code>contents: read</code>.
-    </p>
-    <label for="repo-input">Repository (<code>owner/repo</code>)</label>
-    <input id="repo-input" type="text" placeholder="your-user/te_spain" autocomplete="off" />
-    <label for="token-input">Personal access token</label>
-    <input id="token-input" type="password" placeholder="github_pat_..." autocomplete="off" />
-    <label for="branch-input">Branch (default: main)</label>
-    <input id="branch-input" type="text" placeholder="main" autocomplete="off" />
-    <div class="dlg-actions">
-      <button id="dlg-cancel" class="ghost">Cancel</button>
-      <button id="dlg-save">Save</button>
-    </div>
+<div class="step">
+  <h2>Step 1</h2>
+  <div class="label">Vendor fleet file (Flota Viva)</div>
+  <div class="hint">Single sheet, headers on row 10, data from row 11 onward.</div>
+  <div style="margin-top: 0.7rem;">
+    <button class="pick" type="button" onclick="document.getElementById('flotaFile').click()">Choose file…</button>
+    <input id="flotaFile" type="file" accept=".xlsx" />
+    <div class="picked" id="flotaPicked"></div>
   </div>
 </div>
 
+<div class="step">
+  <h2>Step 2</h2>
+  <div class="label">Liquidaciones workbook</div>
+  <div class="hint">Will be updated with the new fleet + a new month row. Original file is not changed; you'll get a new file to download.</div>
+  <div style="margin-top: 0.7rem;">
+    <button class="pick" type="button" onclick="document.getElementById('liqFile').click()">Choose file…</button>
+    <input id="liqFile" type="file" accept=".xlsx" />
+    <div class="picked" id="liqPicked"></div>
+  </div>
+</div>
+
+<div class="step">
+  <h2>Step 3</h2>
+  <div class="label">Fuel prices file (preciosEESS_es.xls)</div>
+  <div class="hint">
+    Download the latest from <a href="https://geoportalgasolineras.es/geoportal/resources/files/preciosEESS_es.xls" target="_blank" rel="noopener">geoportalgasolineras.es</a>,
+    then pick it here. Average <em>Precio gasolina 95 E5</em> and <em>Precio gasóleo A</em> are computed across all stations that report a price.
+  </div>
+  <div style="margin-top: 0.7rem;">
+    <button class="pick" type="button" onclick="document.getElementById('priceFile').click()">Choose file…</button>
+    <input id="priceFile" type="file" accept=".xls,.xlsx" />
+    <div class="picked" id="pricePicked"></div>
+  </div>
+</div>
+
+<div class="step">
+  <h2>Step 4 — settings</h2>
+  <div class="field-grid">
+    <label for="dateField">Calculation date (column A)</label>
+    <input id="dateField" type="text" placeholder="dd/MM/yyyy" />
+  </div>
+  <div class="hint">Defaults to today. Format matches the existing rows: <code>dd/MM/yyyy</code>.</div>
+</div>
+
+<div class="actions">
+  <button id="runBtn" disabled>Build updated workbook</button>
+  <button id="resetBtn" class="ghost" type="button">Reset</button>
+</div>
+
+<div class="status" id="status"></div>
+
+<div class="preview" id="preview" style="display:none;">
+  <h2>Preview</h2>
+  <div class="stats">
+    <div class="stat diesel">
+      <div class="lbl">Gasóleo A — average price</div>
+      <div class="val" id="pvDieselPrice">—</div>
+      <div class="lbl" style="margin-top:0.4rem;">Avg consumption (l/100km)</div>
+      <div style="font-weight:600;" id="pvDieselCons">—</div>
+    </div>
+    <div class="stat gasoline">
+      <div class="lbl">Gasolina 95 — average price</div>
+      <div class="val" id="pvGasPrice">—</div>
+      <div class="lbl" style="margin-top:0.4rem;">Avg consumption (l/100km)</div>
+      <div style="font-weight:600;" id="pvGasCons">—</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Vendor fleet rows</div>
+      <div class="val" id="pvFleet">—</div>
+      <div class="lbl" style="margin-top:0.4rem;">Stations averaged (D / G)</div>
+      <div style="font-weight:600;" id="pvStations">—</div>
+    </div>
+  </div>
+
+  <h2>Email draft</h2>
+  <div class="hint" style="margin-bottom: 0.5rem;">
+    Copy and paste into Outlook. The header + data line is tab-separated, so it will paste as a table.
+  </div>
+  <div class="snippet" id="snippet"></div>
+
+  <div class="actions" style="margin-top: 1rem;">
+    <button id="dlBtn">Download updated .xlsx</button>
+    <button id="copyBtn" class="ghost" type="button">Copy email draft</button>
+  </div>
+</div>
+
+</main>
+
 <script>
-const WORKFLOW_FILE = "refresh.yml";
-const POLL_INTERVAL_MS = 4000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000;
-// After workflow completes, wait up to ~10 min for the PR to auto-merge into main.
-const DATA_POLL_INTERVAL_MS = 5000;
-const DATA_POLL_MAX_TRIES = 120;
+"use strict";
 
-const numFmt = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
-const intFmt = new Intl.NumberFormat("es-ES");
+const HEADER_ROW_INDEX = 3;            // 0-based: row 4 in the .xls header
+const PRICE_COL_GASOLINA = "Precio gasolina 95 E5";
+const PRICE_COL_DIESEL   = "Precio gasóleo A";
 
-function $(id) { return document.getElementById(id); }
-function setStatus(msg, cls = "") {
+// Liquidaciones layout (1-based row numbers in Excel)
+const LIQ_SHEET = "Liquidaciones de combustible";
+const FLOTA_SHEET = "flota";
+const FLOTA_HEADER_ROW = 10;           // headers; data starts row 11
+const FLOTA_VIVA_HEADER_ROW = 10;      // same on vendor file
+const FLOTA_COL_FIRST = "B";
+const FLOTA_COL_LAST  = "P";           // vendor file last column
+
+// Where to write the new row in Liquidaciones de combustible.
+// Layout the user described: history block, then a header row, then ONE new-month row.
+// We find that header row at the bottom and overwrite the row below it.
+const SNIPPET_HEADER_TEXT = "Fecha del cálculo";   // marker in column A
+
+// State
+const state = {
+  flotaFile: null,
+  liqFile: null,
+  priceFile: null,
+  result: null,
+};
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (msg, cls = "") => {
   $("status").textContent = msg;
   $("status").className = "status" + (cls ? " " + cls : "");
-}
+};
 
-function normalizeRepo(input) {
-  let s = (input || "").trim();
-  if (!s) return "";
-  // Accept "https://github.com/owner/repo", "github.com/owner/repo", "owner/repo", with or without trailing slash / .git
-  s = s.replace(/^https?:\/\//i, "").replace(/^github\.com\//i, "");
-  s = s.replace(/\.git$/i, "").replace(/\/+$/g, "");
-  // Keep only the first two path segments (owner/repo) in case extra path bits got pasted
-  const parts = s.split("/").filter(Boolean);
-  return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : s;
-}
+const numFmtEs = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const num2 = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function getCfg() {
-  const repo = normalizeRepo(localStorage.getItem("gh.repo") || "");
-  const token = localStorage.getItem("gh.token") || "";
-  const branch = localStorage.getItem("gh.branch") || "main";
-  return { repo, token, branch };
-}
-function setCfg(cfg) {
-  localStorage.setItem("gh.repo", normalizeRepo(cfg.repo));
-  localStorage.setItem("gh.token", cfg.token);
-  localStorage.setItem("gh.branch", cfg.branch);
-}
-
-function renderFuel(elPriceId, elMetaId, fuel) {
-  const priceEl = $(elPriceId);
-  const metaEl = $(elMetaId);
-  if (!fuel || fuel.average_eur_per_l == null) {
-    priceEl.innerHTML = '<span class="empty">no data</span>';
-    metaEl.textContent = "";
-    return;
-  }
-  priceEl.innerHTML = `${numFmt.format(fuel.average_eur_per_l)}<span class="unit">€/L</span>`;
-  metaEl.textContent =
-    `${intFmt.format(fuel.stations)} stations · `
-    + `min ${numFmt.format(fuel.min)} · max ${numFmt.format(fuel.max)}`;
-}
-
-let CURRENT_DATA = null;
-function getCurrentData() { return CURRENT_DATA; }
-
-function render(data) {
-  CURRENT_DATA = data;
-  renderFuel("g95-price", "g95-meta", data.fuels?.gasolina_95_e5);
-  renderFuel("da-price", "da-meta", data.fuels?.gasoleo_a);
-  const parts = [];
-  if (data.snapshot) parts.push(`Source snapshot: ${data.snapshot}`);
-  if (data.fetched_at) parts.push(`Refreshed: ${new Date(data.fetched_at).toLocaleString()}`);
-  if (data.source_url) parts.push(`<a href="${data.source_url}" target="_blank" rel="noopener">source</a>`);
-  $("footer").innerHTML = parts.join(" · ");
-}
-
-async function loadData() {
-  const { repo, token, branch } = getCfg();
-  if (!repo || !token) return false;
-  try {
-    const r = await ghFetch(
-      `/repos/${repo}/contents/data.json?ref=${encodeURIComponent(branch)}`,
-      { headers: { Accept: "application/vnd.github.raw" }, cache: "no-store" }
-    );
-    if (!r.ok) throw new Error(`data.json: ${r.status}`);
-    render(await r.json());
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-async function ghFetch(path, opts = {}) {
-  const { token } = getCfg();
-  const r = await fetch(`https://api.github.com${path}`, {
-    ...opts,
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      Authorization: `Bearer ${token}`,
-      ...(opts.headers || {}),
-    },
+// --- File pickers ----------------------------------------------------------
+function wirePicker(inputId, pickedId, key) {
+  const inp = $(inputId);
+  inp.addEventListener("change", () => {
+    const f = inp.files?.[0];
+    if (!f) return;
+    state[key] = f;
+    $(pickedId).textContent = `✓ ${f.name}`;
+    updateRunBtn();
   });
-  return r;
+}
+wirePicker("flotaFile", "flotaPicked", "flotaFile");
+wirePicker("liqFile",   "liqPicked",   "liqFile");
+wirePicker("priceFile", "pricePicked", "priceFile");
+
+function updateRunBtn() {
+  $("runBtn").disabled = !(state.flotaFile && state.liqFile && state.priceFile);
 }
 
-async function dispatchWorkflow() {
-  const { repo, branch } = getCfg();
-  const r = await ghFetch(
-    `/repos/${repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
-    { method: "POST", body: JSON.stringify({ ref: branch }) }
-  );
-  if (!r.ok) {
-    let msg = `dispatch failed: ${r.status}`;
-    try {
-      const body = await r.json();
-      if (body.message) msg += " — " + body.message;
-      if (body.documentation_url) msg += "  (" + body.documentation_url + ")";
-    } catch {}
-    console.error("dispatch error", msg);
-    throw new Error(msg);
+// Default date = today, dd/MM/yyyy
+(function setDefaultDate() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  $("dateField").value = `${dd}/${mm}/${d.getFullYear()}`;
+})();
+
+// --- Helpers ---------------------------------------------------------------
+function toNumberEs(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  const s = String(v).trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function readWorkbook(file) {
+  const buf = await file.arrayBuffer();
+  return XLSX.read(buf, { type: "array", cellDates: false, cellStyles: true, bookVBA: true });
+}
+
+function colNum(letters) {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1; // 0-based
+}
+
+// Compute price averages across all rows of preciosEESS_es.
+// Reads by cell address (sheet_to_json strips leading-empty rows).
+function pricesFromWorkbook(wb) {
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+
+  // Build header from row HEADER_ROW_INDEX (0-based).
+  const header = [];
+  for (let c = 0; c <= range.e.c; c++) {
+    const a = XLSX.utils.encode_cell({ r: HEADER_ROW_INDEX, c });
+    header.push(sheet[a] ? String(sheet[a].v).trim() : "");
   }
-}
-
-async function findLatestRun(sinceMs) {
-  const { repo, branch } = getCfg();
-  const r = await ghFetch(
-    `/repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&per_page=5`
-  );
-  if (!r.ok) throw new Error(`runs query failed: ${r.status}`);
-  const data = await r.json();
-  for (const run of data.workflow_runs || []) {
-    if (new Date(run.created_at).getTime() >= sinceMs - 5000) return run;
+  const idxG = header.indexOf(PRICE_COL_GASOLINA);
+  const idxD = header.indexOf(PRICE_COL_DIESEL);
+  if (idxG < 0 || idxD < 0) {
+    throw new Error(`Price columns not found. Expected "${PRICE_COL_GASOLINA}" and "${PRICE_COL_DIESEL}".`);
   }
-  return null;
+
+  const vG = [], vD = [];
+  for (let r = HEADER_ROW_INDEX + 1; r <= range.e.r; r++) {
+    const cellG = sheet[XLSX.utils.encode_cell({ r, c: idxG })];
+    const cellD = sheet[XLSX.utils.encode_cell({ r, c: idxD })];
+    const a = toNumberEs(cellG?.v); if (a !== null) vG.push(a);
+    const b = toNumberEs(cellD?.v); if (b !== null) vD.push(b);
+  }
+  if (!vG.length || !vD.length) throw new Error("No price values parsed.");
+
+  const snapCell = sheet[XLSX.utils.encode_cell({ r: 0, c: 1 })];
+  const snapshot = snapCell ? String(snapCell.v).trim() : "";
+  return {
+    gasolina: vG.reduce((a, b) => a + b, 0) / vG.length,
+    diesel:   vD.reduce((a, b) => a + b, 0) / vD.length,
+    countG:   vG.length,
+    countD:   vD.length,
+    snapshot,
+  };
 }
 
-async function pollForCompletion(sinceMs) {
-  const start = Date.now();
-  let run = null;
-  while (Date.now() - start < POLL_TIMEOUT_MS) {
-    await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
-    run = await findLatestRun(sinceMs);
-    if (!run) {
-      setStatus("Waiting for workflow to start…");
-      continue;
+// Read fleet rows from vendor "Flota Viva" file.
+// Header on row 10 (1-based). Returns array of arrays for columns B..P.
+// Reads cells by address to avoid sheet_to_json's leading-empty-row stripping.
+function readFleet(wb) {
+  if (!wb.SheetNames.length) throw new Error("Flota Viva file has no sheets.");
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const first = colNum(FLOTA_COL_FIRST), last = colNum(FLOTA_COL_LAST);
+  const headerR = FLOTA_VIVA_HEADER_ROW - 1; // 0-based
+
+  const headerRow = [];
+  for (let c = first; c <= last; c++) {
+    const a = XLSX.utils.encode_cell({ r: headerR, c });
+    headerRow.push(sheet[a]?.v ?? null);
+  }
+  if (!headerRow.some((v) => v && String(v).toLowerCase().includes("matrícula"))) {
+    throw new Error(`Could not find "Matrícula" header on row ${FLOTA_VIVA_HEADER_ROW} of vendor file.`);
+  }
+
+  const out = [];
+  for (let r = headerR + 1; r <= range.e.r; r++) {
+    const plateCell = sheet[XLSX.utils.encode_cell({ r, c: 1 })]; // B = Matrícula
+    if (!plateCell || plateCell.v === null || plateCell.v === undefined || plateCell.v === "") continue;
+    const slice = [];
+    for (let c = first; c <= last; c++) {
+      const cv = sheet[XLSX.utils.encode_cell({ r, c })];
+      slice.push(cv ? cv.v : null);
     }
-    setStatus(`Workflow ${run.status}…`);
-    if (run.status === "completed") return run;
+    out.push(slice);
   }
-  throw new Error("Timed out waiting for workflow.");
+  return { rows: out, headerRow };
 }
 
-async function refresh() {
-  const { repo, token } = getCfg();
-  if (!repo || !token) {
-    openSettings();
-    setStatus("Set repo + token first.", "err");
-    return;
+// Compute the two consumption averages from fleet, replacing the pivot logic.
+// Diésel-fuel rows -> diesel average; Gasolina-fuel rows -> gasoline average.
+function consumptionAverages(fleetRows, headerRow) {
+  // Identify columns by header name (in case order shifts).
+  const idxOf = (label) => {
+    for (let i = 0; i < headerRow.length; i++) {
+      if (headerRow[i] && String(headerRow[i]).toLowerCase().includes(label.toLowerCase())) return i;
+    }
+    return -1;
+  };
+  const idxFuel = idxOf("Tipo Combustible");
+  const idxCons = idxOf("Consumo Fabricante");
+  if (idxFuel < 0 || idxCons < 0) {
+    throw new Error("Could not find Tipo Combustible / Consumo Fabricante columns in vendor file.");
   }
-  const btn = $("refresh");
-  btn.disabled = true;
+  const dieselVals = [];
+  const gasVals = [];
+  for (const row of fleetRows) {
+    const fuel = String(row[idxFuel] ?? "").toLowerCase();
+    const cons = toNumberEs(row[idxCons]);
+    if (cons === null || cons === 0) continue;
+    if (fuel.includes("diésel") || fuel.includes("diesel")) dieselVals.push(cons);
+    else if (fuel.includes("gasolina")) gasVals.push(cons);
+    // (BEV / 0-consumption rows are skipped)
+  }
+  return {
+    diesel:   dieselVals.length ? dieselVals.reduce((a, b) => a + b, 0) / dieselVals.length : null,
+    gasoline: gasVals.length    ? gasVals.reduce((a, b)    => a + b, 0) / gasVals.length    : null,
+    nDiesel: dieselVals.length,
+    nGas:    gasVals.length,
+  };
+}
+
+// Find the "Fecha del cálculo" snippet header row in column A of Liquidaciones,
+// scanning from the bottom up. Return the row INDEX of the header (1-based Excel row).
+function findSnippetHeaderRow(sheet) {
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  for (let r = range.e.r; r >= 0; r--) {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
+    if (cell && String(cell.v).trim() === SNIPPET_HEADER_TEXT) return r + 1; // 1-based
+  }
+  throw new Error(`Could not locate "${SNIPPET_HEADER_TEXT}" header row in column A.`);
+}
+
+function setCell(sheet, addr, value, opts = {}) {
+  const ref = sheet[addr] || {};
+  const cell = { ...ref };
+  if (opts.formula) {
+    cell.f = opts.formula;
+    delete cell.v;
+  } else {
+    cell.v = value;
+    delete cell.f;
+  }
+  if (opts.type) cell.t = opts.type;
+  else if (typeof value === "number") cell.t = "n";
+  else if (typeof value === "string") cell.t = "s";
+  if (opts.numFmt) {
+    cell.z = opts.numFmt;
+  }
+  sheet[addr] = cell;
+}
+
+function clearRange(sheet, r1, c1, r2, c2) {
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const a = XLSX.utils.encode_cell({ r, c });
+      if (sheet[a]) delete sheet[a];
+    }
+  }
+}
+
+function expandRange(sheet, lastRow, lastCol) {
+  const cur = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const newRange = {
+    s: { r: 0, c: 0 },
+    e: { r: Math.max(cur.e.r, lastRow), c: Math.max(cur.e.c, lastCol) },
+  };
+  sheet["!ref"] = XLSX.utils.encode_range(newRange);
+}
+
+// --- Main pipeline ---------------------------------------------------------
+async function build() {
+  setStatus("Reading files…");
+  const calcDate = $("dateField").value.trim();
+  if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(calcDate)) {
+    throw new Error("Date must be in dd/MM/yyyy format.");
+  }
+
+  const [flotaWb, liqWb, priceWb] = await Promise.all([
+    readWorkbook(state.flotaFile),
+    readWorkbook(state.liqFile),
+    readWorkbook(state.priceFile),
+  ]);
+
+  setStatus("Computing prices…");
+  const prices = pricesFromWorkbook(priceWb);
+
+  setStatus("Reading vendor fleet…");
+  const fleet = readFleet(flotaWb);
+  const cons = consumptionAverages(fleet.rows, fleet.headerRow);
+
+  // --- 1. Replace flota sheet contents in Liquidaciones --------------------
+  if (!liqWb.Sheets[FLOTA_SHEET]) throw new Error(`Liquidaciones is missing the "${FLOTA_SHEET}" sheet.`);
+  const flotaSheet = liqWb.Sheets[FLOTA_SHEET];
+  const firstCol = colNum(FLOTA_COL_FIRST);
+  const lastCol  = colNum(FLOTA_COL_LAST);
+
+  // Clear existing data rows (header on row 10 stays; data rows 11..lastDataRow cleared up to maxRow)
+  const existingRange = XLSX.utils.decode_range(flotaSheet["!ref"] || "A1");
+  clearRange(flotaSheet, FLOTA_HEADER_ROW, firstCol, existingRange.e.r, lastCol);
+
+  // Write new fleet rows starting at row 11 (1-based) -> r index 10
+  fleet.rows.forEach((row, i) => {
+    const r = FLOTA_HEADER_ROW + i; // 0-based: header row 9 (= row 10), data starts at index 10
+    row.forEach((v, j) => {
+      if (v === null || v === undefined || v === "") return;
+      const a = XLSX.utils.encode_cell({ r, c: firstCol + j });
+      const isNum = typeof v === "number";
+      flotaSheet[a] = { t: isNum ? "n" : "s", v };
+    });
+  });
+  expandRange(flotaSheet, FLOTA_HEADER_ROW + fleet.rows.length - 1, lastCol);
+
+  // --- 2. Append the new month row in Liquidaciones de combustible --------
+  if (!liqWb.Sheets[LIQ_SHEET]) throw new Error(`Liquidaciones is missing the "${LIQ_SHEET}" sheet.`);
+  const liqSheet = liqWb.Sheets[LIQ_SHEET];
+  const headerRow = findSnippetHeaderRow(liqSheet); // 1-based excel row
+  const newRow = headerRow + 1;                     // 1-based excel row to (over)write
+
+  // Clear any existing content on that row (in case it had a placeholder).
+  // Liquidaciones uses columns A..O for the snippet. Delete the whole row across A..O.
+  const liqRange = XLSX.utils.decode_range(liqSheet["!ref"] || "A1");
+  for (let c = 0; c <= Math.max(14, liqRange.e.c); c++) {
+    const a = XLSX.utils.encode_cell({ r: newRow - 1, c });
+    if (liqSheet[a]) delete liqSheet[a];
+  }
+
+  // A: date string (kept as text matching the historical format)
+  setCell(liqSheet, `A${newRow}`, calcDate, { type: "s" });
+  // H: Gasóleo A price (number)
+  setCell(liqSheet, `H${newRow}`, prices.diesel, { type: "n", numFmt: "0.0000" });
+  // I: Consumo Diesel (replaces GETPIVOTDATA with the computed average)
+  if (cons.diesel !== null) setCell(liqSheet, `I${newRow}`, cons.diesel, { type: "n", numFmt: "0.00" });
+  // J: =H{row}    K: =I{row}*J{row}/100
+  setCell(liqSheet, `J${newRow}`, null, { formula: `H${newRow}` });
+  setCell(liqSheet, `K${newRow}`, null, { formula: `I${newRow}*J${newRow}/100` });
+  // L: Gasolina 95 price
+  setCell(liqSheet, `L${newRow}`, prices.gasolina, { type: "n", numFmt: "0.0000" });
+  // M: Consumo Gasolina
+  if (cons.gasoline !== null) setCell(liqSheet, `M${newRow}`, cons.gasoline, { type: "n", numFmt: "0.00" });
+  // N: =L{row}    O: =M{row}*N{row}/100
+  setCell(liqSheet, `N${newRow}`, null, { formula: `L${newRow}` });
+  setCell(liqSheet, `O${newRow}`, null, { formula: `M${newRow}*N${newRow}/100` });
+
+  expandRange(liqSheet, newRow - 1, 14);
+
+  // --- 3. Generate the full email draft -----------------------------------
+  const fmt4 = (n) => (n == null ? "" : numFmtEs.format(n));
+  const fmt2 = (n) => (n == null ? "" : num2.format(n));
+  const fmtAny = (v) => (v == null ? "" : String(v));
+
+  // Header row of the email table (read live from the Liquidaciones header row).
+  const headerCells = [];
+  for (let c = 0; c <= 14; c++) {
+    const a = XLSX.utils.encode_cell({ r: headerRow - 1, c });
+    headerCells.push(fmtAny(liqSheet[a]?.v));
+  }
+  const tarifaDiesel = cons.diesel != null ? (cons.diesel * prices.diesel / 100) : null;
+  const tarifaGas    = cons.gasoline != null ? (cons.gasoline * prices.gasolina / 100) : null;
+
+  const rowCells = [
+    calcDate, "", "", "", "", "", "",
+    fmt4(prices.diesel),
+    fmt2(cons.diesel),
+    fmt4(prices.diesel),
+    fmt4(tarifaDiesel),
+    fmt4(prices.gasolina),
+    fmt2(cons.gasoline),
+    fmt4(prices.gasolina),
+    fmt4(tarifaGas),
+  ];
+
+  // Month name in Spanish from calcDate (dd/MM/yyyy)
+  const [dd, mm, yyyy] = calcDate.split("/").map((s) => parseInt(s, 10));
+  const monthsEs = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const monthLabel = `${monthsEs[(mm - 1) % 12]} ${yyyy}`;
+
+  const draft = [
+    "Dear colleagues,",
+    "",
+    `Find below price for ${monthLabel}:`,
+    "",
+    headerCells.join("\t"),
+    rowCells.join("\t"),
+    "",
+    "",
+    `${fmt4(tarifaDiesel)}\tDiesel`,
+    `${fmt4(tarifaGas)}\tGasoline`,
+    "",
+    "Thanks",
+  ].join("\n");
+
+  // --- 4. Build the output workbook bytes ---------------------------------
+  const out = XLSX.write(liqWb, { bookType: "xlsx", type: "array", cellDates: false, bookVBA: true });
+
+  state.result = {
+    bytes: out,
+    suggestedName: state.liqFile.name.replace(/\.xlsx$/i, "") + "_updated.xlsx",
+    snippet: draft,
+    prices,
+    cons,
+    fleetCount: fleet.rows.length,
+  };
+}
+
+function showResult() {
+  const { prices, cons, fleetCount, snippet } = state.result;
+  $("pvDieselPrice").textContent = numFmtEs.format(prices.diesel) + " €/L";
+  $("pvGasPrice").textContent = numFmtEs.format(prices.gasolina) + " €/L";
+  $("pvDieselCons").textContent = cons.diesel != null ? num2.format(cons.diesel) : "—";
+  $("pvGasCons").textContent = cons.gasoline != null ? num2.format(cons.gasoline) : "—";
+  $("pvFleet").textContent = fleetCount;
+  $("pvStations").textContent = `${prices.countD.toLocaleString("es-ES")} / ${prices.countG.toLocaleString("es-ES")}`;
+  $("snippet").textContent = snippet;
+  $("preview").style.display = "";
+}
+
+$("runBtn").addEventListener("click", async () => {
+  $("runBtn").disabled = true;
+  $("preview").style.display = "none";
   try {
-    setStatus("Triggering workflow…");
-    const dispatchedAt = Date.now();
-    await dispatchWorkflow();
-
-    const run = await pollForCompletion(dispatchedAt);
-    if (run.conclusion !== "success") {
-      throw new Error(`Workflow finished with status: ${run.conclusion}`);
-    }
-    setStatus("Workflow done. Waiting for PR auto-merge…");
-    const before = JSON.stringify(getCurrentData());
-    let ok = false;
-    for (let i = 0; i < DATA_POLL_MAX_TRIES; i++) {
-      await new Promise((res) => setTimeout(res, DATA_POLL_INTERVAL_MS));
-      const loaded = await loadData();
-      if (loaded && JSON.stringify(getCurrentData()) !== before) { ok = true; break; }
-      setStatus(`Waiting for PR auto-merge… (${i + 1})`);
-    }
-    if (!ok) throw new Error("Workflow done but data.json on main didn't change. The PR may need manual merge — check the repo's Pull Requests tab.");
-    setStatus("Updated.", "ok");
+    await build();
+    showResult();
+    setStatus("Done. Download the updated file or copy the snippet.", "ok");
   } catch (e) {
+    console.error(e);
     setStatus(`Failed: ${e.message}`, "err");
   } finally {
-    btn.disabled = false;
+    updateRunBtn();
   }
-}
-
-function openSettings() {
-  const cfg = getCfg();
-  $("repo-input").value = cfg.repo;
-  $("token-input").value = cfg.token;
-  $("branch-input").value = cfg.branch;
-  $("dlg-backdrop").classList.add("show");
-}
-function closeSettings() { $("dlg-backdrop").classList.remove("show"); }
-
-$("settings").addEventListener("click", openSettings);
-$("dlg-cancel").addEventListener("click", closeSettings);
-$("dlg-save").addEventListener("click", () => {
-  setCfg({
-    repo: $("repo-input").value.trim(),
-    token: $("token-input").value.trim(),
-    branch: $("branch-input").value.trim() || "main",
-  });
-  closeSettings();
-  setStatus("Saved.", "ok");
 });
-$("refresh").addEventListener("click", refresh);
 
-(async () => {
-  const { repo, token } = getCfg();
-  if (!repo || !token) {
-    setStatus("Click ⚙ to configure repo + token.", "");
+$("dlBtn").addEventListener("click", () => {
+  if (!state.result) return;
+  const blob = new Blob([state.result.bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = state.result.suggestedName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+$("copyBtn").addEventListener("click", async () => {
+  if (!state.result) return;
+  try {
+    await navigator.clipboard.writeText(state.result.snippet);
+    setStatus("Snippet copied to clipboard.", "ok");
+  } catch {
+    // Fallback: select the snippet element so the user can ctrl+c
+    const sel = window.getSelection();
+    sel.selectAllChildren($("snippet"));
+    setStatus("Couldn't auto-copy — text is selected; press Ctrl+C.", "");
     return;
   }
-  const ok = await loadData();
-  if (!ok) setStatus("Configured. Click Download prices to fetch.", "");
-  else setStatus("Loaded latest data.", "ok");
-})();
+  setStatus("Email draft copied to clipboard.", "ok");
+});
+
+$("resetBtn").addEventListener("click", () => {
+  ["flotaFile", "liqFile", "priceFile"].forEach((id) => { $(id).value = ""; });
+  state.flotaFile = state.liqFile = state.priceFile = state.result = null;
+  $("flotaPicked").textContent = "";
+  $("liqPicked").textContent = "";
+  $("pricePicked").textContent = "";
+  $("preview").style.display = "none";
+  setStatus("");
+  updateRunBtn();
+});
+
 </script>
 
 </body>
