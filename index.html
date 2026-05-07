@@ -3,61 +3,217 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Spain fuel prices — averages</title>
+<title>Spain fuel prices — month-end builder</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
-    --bg: #0f172a; --card: #1e293b; --muted: #94a3b8; --text: #e2e8f0;
-    --accent: #38bdf8; --accent-2: #f59e0b; --ok: #22c55e; --err: #ef4444;
-    --border: #334155;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --header: #1a1a2e;
+    --muted: #64748b;
+    --text: #1a1a2e;
+    --accent: #009FE4;        /* Covestro blue */
+    --accent-2: #FF7F41;      /* Covestro orange */
+    --green: #00BB7E;
+    --pink: #E6007C;
+    --yellow: #FFEE00;
+    --ok: #00BB7E;
+    --err: #E6007C;
+    --border: #e2e8f0;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 2rem;
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg); color: var(--text); min-height: 100vh;
   }
-  header {
-    max-width: 900px; margin: 0 auto 1.5rem;
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-  }
-  h1 { font-size: 1.5rem; margin: 0; font-weight: 600; }
-  button {
-    background: var(--accent); color: #082f49; border: 0;
-    padding: 0.7rem 1.2rem; border-radius: 8px; font-weight: 600;
-    cursor: pointer; font-size: 1rem;
-  }
-  button:hover:not(:disabled) { filter: brightness(1.08); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  main { max-width: 900px; margin: 0 auto; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
-  .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 1.75rem 1.5rem;
+  /* ===== App header (Covestro branded) ===== */
+  .app-header {
+    background: var(--header); color: #fff;
+    padding: 0.65rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    flex-wrap: wrap; position: sticky; top: 0; z-index: 100;
   }
-  .card h2 {
-    font-size: 0.85rem; font-weight: 500; color: var(--muted);
-    margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
+  .app-header-left { display: flex; align-items: center; gap: 0.85rem; }
+  .app-header img.logo { height: 32px; width: auto; }
+  .app-title { display: flex; flex-direction: column; line-height: 1.2; }
+  .app-title-en { font-size: 1rem; font-weight: 600; }
+  .app-title-meta { font-size: 0.75rem; color: #94a3b8; }
+  .app-header-right { display: flex; align-items: center; gap: 0.65rem; }
+  .app-header-right button {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 0.55rem 1.1rem; border-radius: 6px; font-weight: 600;
+    cursor: pointer; font-size: 0.9rem;
   }
-  .price {
-    font-size: 3rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  .app-header-right button:hover:not(:disabled) { filter: brightness(1.08); }
+  .app-header-right button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .lang-toggle {
+    display: inline-flex; background: rgba(255,255,255,0.08);
+    border-radius: 6px; padding: 2px; gap: 2px;
   }
-  .price .unit { font-size: 1rem; color: var(--muted); font-weight: 500; margin-left: 0.4rem; }
-  .meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.7rem; }
+  .lang-toggle button {
+    background: transparent; color: #fff; border: 0;
+    padding: 0.35rem 0.65rem; border-radius: 4px;
+    font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+  .lang-toggle button.active { background: var(--accent); }
+  .lang-toggle button:not(.active):hover { background: rgba(255,255,255,0.12); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 1.5rem; }
+
+  button {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 0.65rem 1.15rem; border-radius: 6px; font-weight: 600;
+    cursor: pointer; font-size: 0.9rem;
+  }
+  button.ghost {
+    background: #fff; color: var(--text); border: 1px solid var(--border); font-weight: 500;
+  }
+  button.pick {
+    background: #fff; color: var(--accent); border: 1px solid var(--accent);
+    padding: 0.45rem 0.9rem; font-size: 0.88rem; font-weight: 500;
+  }
+  button.pick:hover { background: rgba(0,159,228,0.08); }
+  button:hover:not(:disabled) { filter: brightness(0.98); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .section h2 {
+    font-size: 0.78rem; font-weight: 600; color: var(--muted);
+    margin: 0 0 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .section .label { font-size: 1rem; font-weight: 500; margin-bottom: 0.3rem; }
+  .section .hint  { color: var(--muted); font-size: 0.85rem; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .priceCard {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.2rem;
+  }
+  .priceCard h3 {
+    font-size: 0.72rem; font-weight: 600; color: var(--muted);
+    margin: 0 0 0.4rem; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .price { font-size: 2rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .price .unit { font-size: 0.85rem; color: var(--muted); font-weight: 500; margin-left: 0.3rem; }
+  .meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.45rem; }
   .accent-1 .price { color: var(--accent); }
   .accent-2 .price { color: var(--accent-2); }
-  .empty { color: var(--muted); font-style: italic; font-size: 1.4rem; font-weight: 500; }
+  .empty { color: var(--muted); font-style: italic; font-size: 1.1rem; font-weight: 500; }
 
-  .status { font-size: 0.9rem; min-height: 1.4em; padding: 0.5rem 0; color: var(--muted); }
-  .status.err { color: var(--err); }
-  .status.ok { color: var(--ok); }
-
-  .footer {
-    color: var(--muted); font-size: 0.82rem; margin-top: 1.5rem; line-height: 1.6;
+  .picker { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .picker input[type=file] { display: none; }
+  .picked { color: var(--ok); font-size: 0.88rem; word-break: break-all; }
+  .dropzone {
+    margin-top: 0.6rem; padding: 1rem 1.25rem;
+    border: 2px dashed var(--border); border-radius: 8px;
+    background: #f8fafc; transition: background 0.15s, border-color 0.15s;
+    display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap;
+    color: var(--muted); font-size: 0.9rem;
   }
+  .dropzone.dragging {
+    background: rgba(0,159,228,0.08);
+    border-color: var(--accent); color: var(--text);
+  }
+  .dropzone .picked { margin-left: auto; }
+  .dropzone .drop-hint { font-style: italic; }
+
+  .actions { display: flex; gap: 0.7rem; flex-wrap: wrap; margin: 1rem 0; }
+  .status { font-size: 0.88rem; min-height: 1.4em; padding: 0.2rem 0; color: var(--muted); }
+  .status.err { color: var(--err); font-weight: 500; }
+  .status.ok  { color: var(--ok); font-weight: 500; }
+
+  .field-grid {
+    display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem;
+    align-items: center; margin-top: 0.5rem;
+  }
+  .field-grid label { color: var(--muted); font-size: 0.85rem; }
+  .field-grid input {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 0.42rem 0.65rem; font: inherit; max-width: 200px;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.7rem; margin-bottom: 1rem; }
+  .stat { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 0.65rem 0.9rem; }
+  .stat .lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat .val { font-size: 1.15rem; font-weight: 700; margin-top: 0.15rem; }
+
+  /* ===== Email preview (made to look like Outlook) ===== */
+  .email-preview {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.25rem 1.5rem; font-family: Calibri, -apple-system, "Segoe UI", sans-serif; color: #000;
+    line-height: 1.45;
+  }
+  .email-subject {
+    font-weight: 600; margin-bottom: 0.85rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+  }
+  .email-body p { margin: 0.5rem 0; }
+  .email-table {
+    border-collapse: collapse; margin: 0.9rem 0;
+    font-size: 0.85rem;
+  }
+  .email-table th, .email-table td {
+    border: 1px solid #aaa; padding: 0.45rem 0.6rem; text-align: center; min-width: 64px;
+    vertical-align: middle;
+  }
+  .email-table th {
+    font-weight: 500; font-size: 0.78rem; line-height: 1.25;
+    background: #f3f3f3;
+  }
+  .email-table th.fuel { background: #595959; color: #fff; }
+  .email-table th.tarifa { background: #FFFF00; color: #000; }
+  .email-table td.fuel { background: #595959; color: #fff; }
+  .email-table td.tarifa { background: #FFFF00; }
+  .email-table td.label { text-align: left; min-width: 140px; }
+  .tarifa-line { font-family: Calibri, sans-serif; }
+  .signoff { margin-top: 1rem; }
+  .signature {
+    margin-top: 1.25rem; padding-top: 0.85rem; border-top: 1px solid var(--border);
+    font-size: 0.88rem;
+  }
+  .signature .name { font-weight: 700; }
+  .signature .role { color: #444; }
+  .email-footer {
+    display: flex; gap: 0.85rem; align-items: flex-start;
+    margin-top: 1.25rem; padding-top: 0.85rem; border-top: 1px solid #ccc;
+    font-size: 0.78rem; color: #444;
+  }
+  .email-footer img { width: 56px; height: 56px; flex-shrink: 0; }
+
+  /* ===== Help / docs ===== */
+  details.docs {
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.5rem 1rem; margin-bottom: 1rem;
+  }
+  details.docs > summary {
+    cursor: pointer; padding: 0.7rem 0.5rem; font-weight: 600; font-size: 0.95rem;
+    list-style: none;
+  }
+  details.docs > summary::after { content: "▸"; float: right; transition: transform 0.15s; }
+  details.docs[open] > summary::after { transform: rotate(90deg); }
+  details.docs .docs-body { padding: 0.5rem 0.5rem 1rem; line-height: 1.6; font-size: 0.92rem; }
+  details.docs .docs-body h3 {
+    font-size: 0.95rem; margin: 1rem 0 0.4rem; color: var(--text);
+  }
+  details.docs ol, details.docs ul { margin: 0.4rem 0 0.7rem 1.5rem; }
+  details.docs li { margin-bottom: 0.3rem; }
+  details.docs code {
+    background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  .footer { color: var(--muted); font-size: 0.8rem; margin-top: 1.5rem; padding: 0 1.5rem 1.5rem; line-height: 1.6; max-width: 1080px; margin-left: auto; margin-right: auto; }
   .footer a { color: var(--accent); }
+
   .spinner {
-    display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.4em;
+    display: inline-block; width: 0.75em; height: 0.75em; margin-right: 0.4em;
     border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
     animation: spin 0.7s linear infinite; vertical-align: -0.1em;
   }
@@ -66,133 +222,791 @@
 </head>
 <body>
 
-<header>
-  <h1>Spain fuel prices — averages</h1>
-  <button id="refresh">Download prices</button>
+<header class="app-header">
+  <div class="app-header-left">
+    <img class="logo" id="brandLogo" alt="Covestro" />
+    <div class="app-title">
+      <span class="app-title-en" data-i18n="appTitle">Spain Fuel Prices — Month-End Builder</span>
+      <span class="app-title-meta">Covestro · Accounting Spain</span>
+    </div>
+  </div>
+  <div class="app-header-right">
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button id="langEn" class="active" type="button">EN</button>
+      <button id="langEs" type="button">ES</button>
+    </div>
+    <button id="refreshBtn" data-i18n="downloadPrices">Download prices</button>
+  </div>
 </header>
 
 <main>
+
+<details class="docs" id="helpSection">
+  <summary data-i18n="helpTitle">How to use this tool</summary>
+  <div class="docs-body" id="docsBody"></div>
+</details>
+
+<section class="section">
+  <h2 data-i18n="livePricesTitle">Live averages</h2>
   <div class="cards">
-    <div class="card accent-1">
-      <h2>Gasolina 95 E5</h2>
+    <div class="priceCard accent-1">
+      <h3>Gasolina 95 E5</h3>
       <div class="price" id="g95-price"><span class="empty">—</span></div>
       <div class="meta" id="g95-meta"></div>
     </div>
-    <div class="card accent-2">
-      <h2>Gasóleo A</h2>
+    <div class="priceCard accent-2">
+      <h3>Gasóleo A</h3>
       <div class="price" id="da-price"><span class="empty">—</span></div>
       <div class="meta" id="da-meta"></div>
     </div>
   </div>
+  <div class="status" id="priceStatus"></div>
+</section>
 
-  <div class="status" id="status">Click <strong>Download prices</strong> to fetch the latest averages from the Spanish Ministry's REST API.</div>
-
-  <div class="footer" id="footer">
-    Source: <a href="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help" target="_blank" rel="noopener">Spanish Ministry of Energy — fuel prices REST API</a>.
-    Data updated hourly.
+<section class="section">
+  <h2 data-i18n="step1Title">Step 1 — Vendor fleet file</h2>
+  <div class="label">Flota Viva Covestro <em>&lt;date&gt;</em>.xlsx</div>
+  <div class="hint" data-i18n="step1Hint">From Ayvens. Headers on row 10, data from row 11.</div>
+  <div class="dropzone" id="flotaDrop">
+    <button class="pick" type="button" data-i18n="chooseFile" onclick="document.getElementById('flotaFile').click()">Choose file…</button>
+    <input id="flotaFile" type="file" accept=".xlsx" />
+    <span class="drop-hint" data-i18n="dropHint">or drag &amp; drop the .xlsx here</span>
+    <span class="picked" id="flotaPicked"></span>
   </div>
+</section>
+
+<section class="section">
+  <h2 data-i18n="step2Title">Step 2 — Liquidaciones workbook</h2>
+  <div class="label">Liquidaciones de combustible …xlsx</div>
+  <div class="hint" data-i18n="step2Hint">The original is not modified — you'll get a new <code>_updated.xlsx</code> file to download.</div>
+  <div class="dropzone" id="liqDrop">
+    <button class="pick" type="button" data-i18n="chooseFile" onclick="document.getElementById('liqFile').click()">Choose file…</button>
+    <input id="liqFile" type="file" accept=".xlsx" />
+    <span class="drop-hint" data-i18n="dropHint">or drag &amp; drop the .xlsx here</span>
+    <span class="picked" id="liqPicked"></span>
+  </div>
+</section>
+
+<section class="section">
+  <h2 data-i18n="step3Title">Step 3 — Settings</h2>
+  <div class="field-grid">
+    <label for="dateField" data-i18n="calcDate">Calculation date</label>
+    <input id="dateField" type="text" placeholder="dd/MM/yyyy" />
+    <label for="senderName" data-i18n="signoffName">Email sign-off — name</label>
+    <input id="senderName" type="text" data-i18n-attr="placeholder:senderNamePh" placeholder="Your full name" />
+    <label for="senderRole" data-i18n="signoffRole">Email sign-off — role</label>
+    <input id="senderRole" type="text" placeholder="Accounting Spain" value="Accounting Spain" />
+  </div>
+  <div class="hint" data-i18n="step3Hint" style="margin-top: 0.4rem;">Date format <code>dd/MM/yyyy</code> matches the existing rows. Sign-off appears in the email draft.</div>
+</section>
+
+<div class="actions">
+  <button id="buildBtn" data-i18n="buildBtn" disabled>Build updated workbook + email draft</button>
+  <button id="resetBtn" data-i18n="reset" class="ghost" type="button">Reset uploads</button>
+</div>
+<div class="status" id="buildStatus"></div>
+
+<section class="section" id="resultSection" style="display:none;">
+  <h2 data-i18n="resultTitle">Result</h2>
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl" data-i18n="dieselConsLbl">Diesel avg consumption (l/100km)</div>
+      <div class="val" id="rsDieselCons">—</div>
+    </div>
+    <div class="stat">
+      <div class="lbl" data-i18n="gasConsLbl">Gasolina avg consumption (l/100km)</div>
+      <div class="val" id="rsGasCons">—</div>
+    </div>
+    <div class="stat">
+      <div class="lbl" data-i18n="fleetRowsLbl">Vendor fleet rows</div>
+      <div class="val" id="rsFleet">—</div>
+    </div>
+  </div>
+
+  <h2 data-i18n="emailPreviewTitle">Email preview</h2>
+  <div class="hint" data-i18n="emailPreviewHint" style="margin-bottom: 0.5rem;">This is how the email will look in Outlook. Click <strong>Copy email draft</strong> to put the formatted version on your clipboard.</div>
+  <div class="email-preview" id="emailPreview"></div>
+
+  <div class="actions" style="margin-top: 1rem;">
+    <button id="dlBtn" data-i18n="downloadXlsx">Download updated .xlsx</button>
+    <button id="copyBtn" data-i18n="copyDraft" class="ghost" type="button">Copy email draft</button>
+  </div>
+</section>
+
 </main>
+
+<div class="footer">
+  Covestro internal tool · Source: <a href="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help" target="_blank" rel="noopener">Ministry of Energy fuel-prices REST API</a>. Data updates hourly. All processing happens locally in your browser.
+</div>
 
 <script>
 "use strict";
 
+// --- Constants ----------------------------------------------------------------
 const API_URL =
   "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/";
+const KEY_G95 = "Precio Gasolina 95 E5";
+const KEY_DA  = "Precio Gasoleo A";
 
-const numFmt = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
-const num3 = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-const intFmt = new Intl.NumberFormat("es-ES");
+const LIQ_SHEET = "Liquidaciones de combustible";
+const FLOTA_SHEET = "flota";
+const FLOTA_HEADER_ROW = 10;
+const FLOTA_VIVA_HEADER_ROW = 10;
+const FLOTA_COL_FIRST = "B";
+const FLOTA_COL_LAST  = "P";
+const SNIPPET_HEADER_TEXT = "Fecha del cálculo";
 
-const $ = (id) => document.getElementById(id);
+// Embedded Covestro logo (PNG, base64 — keeps the page a single file).
+const LOGO_BASE64 = "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";
 
-function setStatus(msg, cls = "") {
-  $("status").innerHTML = msg;
-  $("status").className = "status" + (cls ? " " + cls : "");
+// --- State --------------------------------------------------------------------
+const state = { prices: null, flotaFile: null, liqFile: null, result: null, lang: "en" };
+
+// --- i18n ---------------------------------------------------------------------
+const I18N = {
+  en: {
+    appTitle: "Spain Fuel Prices — Month-End Builder",
+    downloadPrices: "Download prices",
+    helpTitle: "How to use this tool",
+    livePricesTitle: "Live averages",
+    step1Title: "Step 1 — Vendor fleet file",
+    step1Hint: "From Ayvens. Headers on row 10, data from row 11.",
+    step2Title: "Step 2 — Liquidaciones workbook",
+    step2Hint: "The original is not modified — you'll get a new <code>_updated.xlsx</code> file to download.",
+    step3Title: "Step 3 — Settings",
+    step3Hint: "Date format <code>dd/MM/yyyy</code> matches the existing rows. Sign-off appears in the email draft.",
+    calcDate: "Calculation date",
+    signoffName: "Email sign-off — name",
+    signoffRole: "Email sign-off — role",
+    senderNamePh: "Your full name",
+    chooseFile: "Choose file…",
+    dropHint: "or drag &amp; drop the .xlsx here",
+    buildBtn: "Build updated workbook + email draft",
+    reset: "Reset uploads",
+    resultTitle: "Result",
+    dieselConsLbl: "Diesel avg consumption (l/100km)",
+    gasConsLbl: "Gasolina avg consumption (l/100km)",
+    fleetRowsLbl: "Vendor fleet rows",
+    emailPreviewTitle: "Email preview",
+    emailPreviewHint: "This is how the email will look in Outlook. Click <strong>Copy email draft</strong> to put the formatted version on your clipboard.",
+    downloadXlsx: "Download updated .xlsx",
+    copyDraft: "Copy email draft",
+    // Email body
+    emailGreeting: "Dear colleagues,",
+    emailIntro: (m) => `Find below price for ${m}:`,
+    emailThanks: "Thanks",
+    emailBest: "Best regards,",
+    diesel: "Diesel",
+    gasoline: "Gasoline",
+    months: ["January","February","March","April","May","June",
+             "July","August","September","October","November","December"],
+    docsBody: `
+      <p>This tool builds the monthly Spain fuel-price tarifa email. Everything runs in your browser — no data leaves your machine.</p>
+      <h3>Monthly procedure (5 minutes)</h3>
+      <ol>
+        <li><strong>Live prices</strong> (top of page) auto-load when you open this page. Click <em>Download prices</em> to refresh.</li>
+        <li><strong>Step 1</strong>: pick the latest <code>Flota Viva Covestro &lt;date&gt;.xlsx</code> from Ayvens.</li>
+        <li><strong>Step 2</strong>: pick the running <code>Liquidaciones de combustible …xlsx</code> from your local folder.</li>
+        <li><strong>Step 3</strong>: confirm the calculation date (defaults to today).</li>
+        <li>Click <strong>Build updated workbook + email draft</strong>.</li>
+        <li>Download the new <code>_updated.xlsx</code> file. Replace your local copy with it.</li>
+        <li>Copy the email draft and paste into Outlook. Send.</li>
+      </ol>
+      <h3>What the build does</h3>
+      <ul>
+        <li>Replaces the <code>flota</code> sheet with the latest fleet from the vendor file.</li>
+        <li>Computes Diesel and Gasolina consumption averages directly from the vendor data (replaces the old <code>consumo</code> pivot table — pivot is no longer used).</li>
+        <li>Writes a new row in <code>Liquidaciones de combustible</code> with date, prices, consumption and tarifas. <strong>All values are written as plain numbers</strong> — no formulas, no <code>GETPIVOTDATA</code> references — so the row stays correct after future copy-pastes (no <code>#REF!</code> errors).</li>
+        <li>Generates a draft email matching the team's format (Gasóleo A / Gasolina 95 highlighted in dark grey, Tarifa columns in yellow).</li>
+      </ul>
+      <h3>Data sources</h3>
+      <ul>
+        <li>Live prices: <a href="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help" target="_blank" rel="noopener">Spanish Ministry of Energy fuel-prices REST API</a> — updated hourly, ~11,400 stations.</li>
+        <li>Averages exclude stations that don't sell that fuel type (empty values are skipped, not treated as zero).</li>
+      </ul>
+      <h3>Troubleshooting</h3>
+      <ul>
+        <li><strong>Failed: HTTP …</strong> — Ministry API temporarily unavailable; click <em>Download prices</em> again in a minute.</li>
+        <li><strong>"Matrícula" header not found</strong> — vendor file format changed. Check that headers are still on row 10.</li>
+        <li><strong>Could not find Tipo Combustible / Consumo Fabricante columns</strong> — vendor file column names changed.</li>
+        <li><strong>"Fecha del cálculo" header not found</strong> — your Liquidaciones file is missing the email-snippet header row, or it's been renamed.</li>
+      </ul>`,
+  },
+  es: {
+    appTitle: "Precios de combustible España — Generador mensual",
+    downloadPrices: "Descargar precios",
+    helpTitle: "Cómo usar esta herramienta",
+    livePricesTitle: "Promedios en vivo",
+    step1Title: "Paso 1 — Archivo de flota del proveedor",
+    step1Hint: "De Ayvens. Cabeceras en la fila 10, datos desde la fila 11.",
+    step2Title: "Paso 2 — Libro Liquidaciones",
+    step2Hint: "El original no se modifica — descargarás un nuevo archivo <code>_updated.xlsx</code>.",
+    step3Title: "Paso 3 — Ajustes",
+    step3Hint: "El formato <code>dd/MM/yyyy</code> coincide con las filas existentes. La firma aparece en el borrador del correo.",
+    calcDate: "Fecha del cálculo",
+    signoffName: "Firma del correo — nombre",
+    signoffRole: "Firma del correo — puesto",
+    senderNamePh: "Tu nombre completo",
+    chooseFile: "Elegir archivo…",
+    dropHint: "o arrastra y suelta el .xlsx aquí",
+    buildBtn: "Generar libro actualizado + borrador de correo",
+    reset: "Reiniciar archivos",
+    resultTitle: "Resultado",
+    dieselConsLbl: "Consumo medio Gasoil (l/100km)",
+    gasConsLbl: "Consumo medio Gasolina (l/100km)",
+    fleetRowsLbl: "Vehículos en flota",
+    emailPreviewTitle: "Vista previa del correo",
+    emailPreviewHint: "Así se verá el correo en Outlook. Pulsa <strong>Copiar borrador</strong> para poner la versión con formato en el portapapeles.",
+    downloadXlsx: "Descargar .xlsx actualizado",
+    copyDraft: "Copiar borrador",
+    emailGreeting: "Estimados compañeros,",
+    emailIntro: (m) => `A continuación los precios para ${m}:`,
+    emailThanks: "Gracias",
+    emailBest: "Saludos cordiales,",
+    diesel: "Gasoil",
+    gasoline: "Gasolina",
+    months: ["enero","febrero","marzo","abril","mayo","junio",
+             "julio","agosto","septiembre","octubre","noviembre","diciembre"],
+    docsBody: `
+      <p>Esta herramienta genera el correo mensual de tarifas de combustible. Todo el procesamiento ocurre en tu navegador — los datos no salen de tu máquina.</p>
+      <h3>Procedimiento mensual (5 minutos)</h3>
+      <ol>
+        <li><strong>Precios en vivo</strong> (parte superior) se cargan al abrir la página. Pulsa <em>Descargar precios</em> para refrescar.</li>
+        <li><strong>Paso 1</strong>: elige el último <code>Flota Viva Covestro &lt;fecha&gt;.xlsx</code> de Ayvens.</li>
+        <li><strong>Paso 2</strong>: elige el <code>Liquidaciones de combustible …xlsx</code> de tu carpeta local.</li>
+        <li><strong>Paso 3</strong>: confirma la fecha de cálculo (por defecto, hoy).</li>
+        <li>Pulsa <strong>Generar libro actualizado + borrador de correo</strong>.</li>
+        <li>Descarga el nuevo <code>_updated.xlsx</code>. Reemplaza tu copia local.</li>
+        <li>Copia el borrador del correo y pégalo en Outlook. Envía.</li>
+      </ol>
+      <h3>Qué hace el proceso</h3>
+      <ul>
+        <li>Sustituye la hoja <code>flota</code> con la última flota del proveedor.</li>
+        <li>Calcula los consumos medios Gasoil y Gasolina directamente del archivo del proveedor (reemplaza la antigua tabla dinámica <code>consumo</code>).</li>
+        <li>Escribe una fila nueva en <code>Liquidaciones de combustible</code> con fecha, precios, consumos y tarifas. <strong>Todos los valores son números puros</strong> — sin fórmulas ni <code>GETPIVOTDATA</code> — para que la fila quede correcta tras copiar/pegar (sin errores <code>#REF!</code>).</li>
+        <li>Genera un borrador de correo con el formato del equipo (Gasóleo A / Gasolina 95 en gris oscuro, columnas Tarifa en amarillo).</li>
+      </ul>
+      <h3>Fuentes de datos</h3>
+      <ul>
+        <li>Precios en vivo: <a href="https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help" target="_blank" rel="noopener">API REST del Ministerio de Energía</a> — actualización horaria, ~11.400 estaciones.</li>
+        <li>Los promedios excluyen estaciones que no venden ese combustible (los vacíos se omiten, no se tratan como cero).</li>
+      </ul>
+      <h3>Solución de problemas</h3>
+      <ul>
+        <li><strong>Failed: HTTP …</strong> — API del Ministerio temporalmente no disponible; vuelve a pulsar <em>Descargar precios</em> en un minuto.</li>
+        <li><strong>"Matrícula" header not found</strong> — el formato del archivo del proveedor cambió. Comprueba que las cabeceras siguen en la fila 10.</li>
+        <li><strong>Could not find Tipo Combustible / Consumo Fabricante columns</strong> — los nombres de columna del proveedor cambiaron.</li>
+        <li><strong>"Fecha del cálculo" header not found</strong> — al archivo Liquidaciones le falta la fila de cabecera del correo, o se renombró.</li>
+      </ul>`,
+  },
+};
+
+function tr(key) { return I18N[state.lang][key] ?? I18N.en[key] ?? key; }
+
+function applyLanguage(lang) {
+  state.lang = lang;
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const v = tr(key);
+    if (typeof v === "string") el.innerHTML = v;
+  });
+  document.querySelectorAll("[data-i18n-attr]").forEach((el) => {
+    const spec = el.getAttribute("data-i18n-attr"); // e.g. "placeholder:senderNamePh"
+    spec.split(",").forEach((pair) => {
+      const [attr, key] = pair.split(":").map((s) => s.trim());
+      const v = tr(key);
+      if (typeof v === "string") el.setAttribute(attr, v);
+    });
+  });
+  document.getElementById("docsBody").innerHTML = tr("docsBody");
+  document.getElementById("langEn").classList.toggle("active", lang === "en");
+  document.getElementById("langEs").classList.toggle("active", lang === "es");
+  // Re-render email preview if a result already exists.
+  if (state.result) {
+    renderEmailPreview(state.result, $("senderName").value.trim(), $("senderRole").value.trim());
+  }
 }
 
+const $ = (id) => document.getElementById(id);
+const numFmt = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const num3   = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const num2   = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const intFmt = new Intl.NumberFormat("es-ES");
+
+document.getElementById("brandLogo").src = `data:image/png;base64,${LOGO_BASE64}`;
+
+function setStatus(elId, msg, cls = "") {
+  const el = $(elId); el.innerHTML = msg;
+  el.className = "status" + (cls ? " " + cls : "");
+}
+
+// --- Helpers ------------------------------------------------------------------
 function toNumberEs(v) {
   if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
   const s = String(v).trim().replace(",", ".");
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
 
-function average(values) {
-  if (!values.length) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+function colNum(letters) {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
 }
 
-function setCard(elPrice, elMeta, fuelStat) {
-  if (!fuelStat) {
-    $(elPrice).innerHTML = '<span class="empty">no data</span>';
-    $(elMeta).textContent = "";
-    return;
-  }
-  $(elPrice).innerHTML =
-    `${numFmt.format(fuelStat.avg)}<span class="unit">€/L</span>`;
-  $(elMeta).textContent =
-    `${intFmt.format(fuelStat.count)} stations · `
-    + `min ${num3.format(fuelStat.min)} · max ${num3.format(fuelStat.max)}`;
+async function readWorkbook(file) {
+  const buf = await file.arrayBuffer();
+  return XLSX.read(buf, { type: "array", cellDates: false, cellStyles: true, bookVBA: true });
 }
 
+// --- Live prices via API ------------------------------------------------------
 async function fetchPrices() {
-  const r = await fetch(API_URL, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
+  const r = await fetch(API_URL, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
   if (!r.ok) throw new Error(`HTTP ${r.status} from API`);
-  return await r.json();
-}
-
-function summarize(json) {
+  const json = await r.json();
   const stations = json.ListaEESSPrecio || [];
   const g95 = [], gA = [];
   for (const s of stations) {
-    const a = toNumberEs(s["Precio Gasolina 95 E5"]); if (a !== null) g95.push(a);
-    const b = toNumberEs(s["Precio Gasoleo A"]);      if (b !== null) gA.push(b);
+    const a = toNumberEs(s[KEY_G95]); if (a !== null) g95.push(a);
+    const b = toNumberEs(s[KEY_DA]);  if (b !== null) gA.push(b);
   }
-  const stat = (vals) => vals.length ? {
-    avg: average(vals), count: vals.length,
-    min: Math.min(...vals), max: Math.max(...vals),
-  } : null;
+  if (!g95.length || !gA.length) throw new Error("No price values parsed.");
   return {
-    snapshot: json.Fecha || "",
-    totalStations: stations.length,
-    gasolina95: stat(g95),
-    gasoleoA:   stat(gA),
+    gasolina: g95.reduce((a, b) => a + b, 0) / g95.length,
+    diesel:   gA.reduce((a, b) => a + b, 0) / gA.length,
+    countG: g95.length, countD: gA.length,
+    minG: Math.min(...g95), maxG: Math.max(...g95),
+    minD: Math.min(...gA),  maxD: Math.max(...gA),
+    snapshot: json.Fecha || "", totalStations: stations.length,
   };
 }
 
-async function refresh() {
-  const btn = $("refresh");
-  btn.disabled = true;
-  setStatus(`<span class="spinner"></span> Fetching live data from the Ministry…`);
+function renderPrices() {
+  const p = state.prices; if (!p) return;
+  $("g95-price").innerHTML = `${numFmt.format(p.gasolina)}<span class="unit">€/L</span>`;
+  $("g95-meta").textContent =
+    `${intFmt.format(p.countG)} stations · min ${num3.format(p.minG)} · max ${num3.format(p.maxG)}`;
+  $("da-price").innerHTML = `${numFmt.format(p.diesel)}<span class="unit">€/L</span>`;
+  $("da-meta").textContent =
+    `${intFmt.format(p.countD)} stations · min ${num3.format(p.minD)} · max ${num3.format(p.maxD)}`;
+}
+
+async function refreshPrices() {
+  const btn = $("refreshBtn"); btn.disabled = true;
+  setStatus("priceStatus", `<span class="spinner"></span> Fetching live data…`);
   try {
-    const json = await fetchPrices();
-    const s = summarize(json);
-    setCard("g95-price", "g95-meta", s.gasolina95);
-    setCard("da-price",  "da-meta",  s.gasoleoA);
-    const localTime = new Date().toLocaleTimeString("es-ES");
-    setStatus(
-      `Updated. Source snapshot: <strong>${s.snapshot}</strong> · `
-      + `${intFmt.format(s.totalStations)} stations total · `
-      + `loaded at ${localTime}`,
-      "ok"
-    );
+    state.prices = await fetchPrices();
+    renderPrices();
+    const local = new Date().toLocaleTimeString("es-ES");
+    setStatus("priceStatus",
+      `Updated. Source snapshot: <strong>${state.prices.snapshot}</strong> · `
+      + `${intFmt.format(state.prices.totalStations)} stations · loaded at ${local}`,
+      "ok");
+    updateBuildBtn();
   } catch (e) {
     console.error(e);
-    setStatus(`Failed: ${e.message}`, "err");
+    setStatus("priceStatus", `Failed: ${e.message}`, "err");
   } finally {
     btn.disabled = false;
   }
 }
 
-$("refresh").addEventListener("click", refresh);
+// --- File pickers (click + drag/drop) ----------------------------------------
+function setPickedFile(stateKey, pickedId, file) {
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) {
+    $(pickedId).style.color = "var(--err)";
+    $(pickedId).textContent = `✗ ${file.name} — needs to be .xlsx`;
+    return;
+  }
+  state[stateKey] = file;
+  $(pickedId).style.color = "var(--ok)";
+  $(pickedId).textContent = `✓ ${file.name}`;
+  updateBuildBtn();
+}
 
-// Auto-fetch on first load.
-refresh();
+function wirePicker(inputId, pickedId, dropId, key) {
+  $(inputId).addEventListener("change", () => setPickedFile(key, pickedId, $(inputId).files?.[0]));
+  const dz = $(dropId);
+  ["dragenter", "dragover"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove("dragging"); }));
+  dz.addEventListener("drop", (e) => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setPickedFile(key, pickedId, f);
+  });
+}
+wirePicker("flotaFile", "flotaPicked", "flotaDrop", "flotaFile");
+wirePicker("liqFile",   "liqPicked",   "liqDrop",   "liqFile");
+
+// Avoid Firefox/Chrome opening dropped files when missed — block on the body too.
+["dragover", "drop"].forEach((ev) =>
+  window.addEventListener(ev, (e) => { e.preventDefault(); }, false));
+
+function updateBuildBtn() {
+  $("buildBtn").disabled = !(state.prices && state.flotaFile && state.liqFile);
+}
+
+(function setDefaultDate() {
+  const d = new Date();
+  $("dateField").value =
+    `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+})();
+
+// --- Vendor fleet read --------------------------------------------------------
+function readFleet(wb) {
+  if (!wb.SheetNames.length) throw new Error("Vendor file has no sheets.");
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const first = colNum(FLOTA_COL_FIRST), last = colNum(FLOTA_COL_LAST);
+  const headerR = FLOTA_VIVA_HEADER_ROW - 1;
+
+  const headerRow = [];
+  for (let c = first; c <= last; c++) {
+    headerRow.push(sheet[XLSX.utils.encode_cell({ r: headerR, c })]?.v ?? null);
+  }
+  if (!headerRow.some((v) => v && String(v).toLowerCase().includes("matrícula"))) {
+    throw new Error(`"Matrícula" header not found on row ${FLOTA_VIVA_HEADER_ROW} of vendor file.`);
+  }
+
+  const rows = [];
+  for (let r = headerR + 1; r <= range.e.r; r++) {
+    const plate = sheet[XLSX.utils.encode_cell({ r, c: 1 })];
+    if (!plate || plate.v === null || plate.v === undefined || plate.v === "") continue;
+    const slice = [];
+    for (let c = first; c <= last; c++) {
+      const cv = sheet[XLSX.utils.encode_cell({ r, c })];
+      slice.push(cv ? cv.v : null);
+    }
+    rows.push(slice);
+  }
+  return { rows, headerRow };
+}
+
+function consumptionAverages(fleetRows, headerRow) {
+  const idxOf = (label) => {
+    for (let i = 0; i < headerRow.length; i++) {
+      if (headerRow[i] && String(headerRow[i]).toLowerCase().includes(label.toLowerCase())) return i;
+    }
+    return -1;
+  };
+  const idxFuel = idxOf("Tipo Combustible");
+  const idxCons = idxOf("Consumo Fabricante");
+  if (idxFuel < 0 || idxCons < 0) {
+    throw new Error("Could not find Tipo Combustible / Consumo Fabricante columns in vendor file.");
+  }
+  const dieselVals = [], gasVals = [];
+  for (const row of fleetRows) {
+    const fuel = String(row[idxFuel] ?? "").toLowerCase();
+    const cons = toNumberEs(row[idxCons]);
+    if (cons === null || cons === 0) continue;
+    if (fuel.includes("diésel") || fuel.includes("diesel")) dieselVals.push(cons);
+    else if (fuel.includes("gasolina")) gasVals.push(cons);
+  }
+  return {
+    diesel:   dieselVals.length ? dieselVals.reduce((a, b) => a + b, 0) / dieselVals.length : null,
+    gasoline: gasVals.length    ? gasVals.reduce((a, b) => a + b, 0) / gasVals.length    : null,
+  };
+}
+
+// --- Liquidaciones helpers ----------------------------------------------------
+function findSnippetHeaderRow(sheet) {
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  for (let r = range.e.r; r >= 0; r--) {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
+    if (cell && String(cell.v).trim() === SNIPPET_HEADER_TEXT) return r + 1;
+  }
+  throw new Error(`"${SNIPPET_HEADER_TEXT}" header not found in column A of Liquidaciones.`);
+}
+
+function setCellNumber(sheet, addr, value, numFmtStr) {
+  sheet[addr] = { t: "n", v: value, ...(numFmtStr ? { z: numFmtStr } : {}) };
+}
+function setCellString(sheet, addr, value) {
+  sheet[addr] = { t: "s", v: value };
+}
+
+function clearRange(sheet, r1, c1, r2, c2) {
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+    const a = XLSX.utils.encode_cell({ r, c });
+    if (sheet[a]) delete sheet[a];
+  }
+}
+
+function expandRange(sheet, lastRow, lastCol) {
+  const cur = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  sheet["!ref"] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: Math.max(cur.e.r, lastRow), c: Math.max(cur.e.c, lastCol) },
+  });
+}
+
+// --- Build pipeline -----------------------------------------------------------
+async function build() {
+  setStatus("buildStatus", `<span class="spinner"></span> Building…`);
+  const calcDate = $("dateField").value.trim();
+  if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(calcDate)) {
+    throw new Error("Date must be in dd/MM/yyyy format.");
+  }
+
+  const [flotaWb, liqWb] = await Promise.all([
+    readWorkbook(state.flotaFile),
+    readWorkbook(state.liqFile),
+  ]);
+
+  const fleet = readFleet(flotaWb);
+  const cons = consumptionAverages(fleet.rows, fleet.headerRow);
+  const prices = state.prices;
+
+  // Compute the four tarifa values once. All written as plain numbers.
+  const dieselCons = cons.diesel;
+  const gasCons    = cons.gasoline;
+  const tarifaDie  = dieselCons != null ? (dieselCons * prices.diesel / 100) : null;
+  const tarifaGas  = gasCons    != null ? (gasCons    * prices.gasolina / 100) : null;
+
+  // 1. Replace flota sheet
+  if (!liqWb.Sheets[FLOTA_SHEET]) throw new Error(`Liquidaciones is missing the "${FLOTA_SHEET}" sheet.`);
+  const flotaSheet = liqWb.Sheets[FLOTA_SHEET];
+  const firstCol = colNum(FLOTA_COL_FIRST), lastCol = colNum(FLOTA_COL_LAST);
+  const existingRange = XLSX.utils.decode_range(flotaSheet["!ref"] || "A1");
+  clearRange(flotaSheet, FLOTA_HEADER_ROW, firstCol, existingRange.e.r, lastCol);
+  fleet.rows.forEach((row, i) => {
+    const r = FLOTA_HEADER_ROW + i;
+    row.forEach((v, j) => {
+      if (v === null || v === undefined || v === "") return;
+      const a = XLSX.utils.encode_cell({ r, c: firstCol + j });
+      flotaSheet[a] = { t: typeof v === "number" ? "n" : "s", v };
+    });
+  });
+  expandRange(flotaSheet, FLOTA_HEADER_ROW + fleet.rows.length - 1, lastCol);
+
+  // 2. New month row in Liquidaciones — ALL VALUES, NO FORMULAS.
+  if (!liqWb.Sheets[LIQ_SHEET]) throw new Error(`Liquidaciones is missing the "${LIQ_SHEET}" sheet.`);
+  const liqSheet = liqWb.Sheets[LIQ_SHEET];
+  const headerRow = findSnippetHeaderRow(liqSheet);
+  const newRow = headerRow + 1;
+  const liqRange = XLSX.utils.decode_range(liqSheet["!ref"] || "A1");
+  for (let c = 0; c <= Math.max(14, liqRange.e.c); c++) {
+    const a = XLSX.utils.encode_cell({ r: newRow - 1, c });
+    if (liqSheet[a]) delete liqSheet[a];
+  }
+  setCellString(liqSheet, `A${newRow}`, calcDate);
+  setCellNumber(liqSheet, `H${newRow}`, prices.diesel,   "0.0000");
+  if (dieselCons != null) setCellNumber(liqSheet, `I${newRow}`, dieselCons, "0.00");
+  setCellNumber(liqSheet, `J${newRow}`, prices.diesel,   "0.0000");
+  if (tarifaDie != null) setCellNumber(liqSheet, `K${newRow}`, tarifaDie, "0.0000");
+  setCellNumber(liqSheet, `L${newRow}`, prices.gasolina, "0.0000");
+  if (gasCons   != null) setCellNumber(liqSheet, `M${newRow}`, gasCons, "0.00");
+  setCellNumber(liqSheet, `N${newRow}`, prices.gasolina, "0.0000");
+  if (tarifaGas != null) setCellNumber(liqSheet, `O${newRow}`, tarifaGas, "0.0000");
+  expandRange(liqSheet, newRow - 1, 14);
+
+  // 3. Output bytes
+  const out = XLSX.write(liqWb, { bookType: "xlsx", type: "array", cellDates: false, bookVBA: true });
+
+  state.result = {
+    bytes: out,
+    suggestedName: state.liqFile.name.replace(/\.xlsx$/i, "") + "_updated.xlsx",
+    calcDate,
+    prices: { diesel: prices.diesel, gasolina: prices.gasolina },
+    cons: { diesel: dieselCons, gasoline: gasCons },
+    tarifa: { diesel: tarifaDie, gasoline: tarifaGas },
+    fleetCount: fleet.rows.length,
+  };
+}
+
+// --- Email rendering ----------------------------------------------------------
+function monthLabel(calcDate) {
+  const [, mm, yyyy] = calcDate.split("/").map((s) => parseInt(s, 10));
+  const months = tr("months");
+  const name = months[(mm - 1) % 12];
+  return state.lang === "en" ? `${name} ${yyyy}` : `${name} ${yyyy}`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+function renderEmailPreview(r, senderName, senderRole) {
+  const fmt4 = (n) => n == null ? "" : numFmt.format(n);
+  const fmt2 = (n) => n == null ? "" : num2.format(n);
+  const subject = "Covestro SL (cc1215)_Update fuel prices";
+  const month = monthLabel(r.calcDate);
+
+  // Email body table headers stay in Spanish (matches the team's existing template).
+  const html = `
+    <div class="email-subject">${escapeHtml(subject)}</div>
+    <div class="email-body">
+      <p>${escapeHtml(tr("emailGreeting"))}</p>
+      <p>${escapeHtml(tr("emailIntro")(month))}</p>
+      <table class="email-table">
+        <thead>
+          <tr>
+            <th class="label">Fecha del cálculo</th>
+            <th class="fuel">Gasóleo A</th>
+            <th>Consumo Gasoil l/100km</th>
+            <th>Precio €/l Gasoil</th>
+            <th class="tarifa">Tarifa €/km Gasoil</th>
+            <th class="fuel">Gasolina 95</th>
+            <th>Consumo Gasolina 95 l/100km</th>
+            <th>Precio €/l Gasolina 95</th>
+            <th class="tarifa">Tarifa €/km Gasolina 95</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="label">${escapeHtml(r.calcDate)}</td>
+            <td class="fuel">${fmt4(r.prices.diesel)}</td>
+            <td>${fmt2(r.cons.diesel)}</td>
+            <td>${fmt4(r.prices.diesel)}</td>
+            <td class="tarifa">${fmt4(r.tarifa.diesel)}</td>
+            <td class="fuel">${fmt4(r.prices.gasolina)}</td>
+            <td>${fmt2(r.cons.gasoline)}</td>
+            <td>${fmt4(r.prices.gasolina)}</td>
+            <td class="tarifa">${fmt4(r.tarifa.gasoline)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="tarifa-line">${fmt4(r.tarifa.diesel)} → ${escapeHtml(tr("diesel"))}</div>
+      <div class="tarifa-line">${fmt4(r.tarifa.gasoline)} → ${escapeHtml(tr("gasoline"))}</div>
+      <p class="signoff">${escapeHtml(tr("emailThanks"))}</p>
+      <div class="signature">
+        <p>${escapeHtml(tr("emailBest"))}</p>
+        <p class="name">${escapeHtml(senderName || (state.lang === "es" ? "[Tu nombre]" : "[Your name]"))}</p>
+        <p class="role">${escapeHtml(senderRole || "Accounting Spain")}</p>
+      </div>
+      <div class="email-footer">
+        <img src="data:image/png;base64,${LOGO_BASE64}" alt="Covestro" />
+        <div>
+          <div>covestro.com</div>
+          <div>Covestro, S.L.</div>
+          <div>BMS-ES1215CFO-ACC</div>
+        </div>
+      </div>
+    </div>
+  `;
+  $("emailPreview").innerHTML = html;
+}
+
+// Build a tab-separated plain-text fallback for clipboard (paste into Outlook).
+function buildEmailPlainText(r, senderName, senderRole) {
+  const fmt4 = (n) => n == null ? "" : numFmt.format(n);
+  const fmt2 = (n) => n == null ? "" : num2.format(n);
+  const month = monthLabel(r.calcDate);
+  const headerCells = [
+    "Fecha del cálculo", "", "", "", "", "", "",
+    "Gasóleo A", "Consumo Gasoil l/100km", "Precio €/l Gasoil", "Tarifa €/km Gasoil",
+    "Gasolina 95", "Consumo Gasolina 95 l/100km", "Precio €/l Gasolina 95", "Tarifa €/km Gasolina 95",
+  ];
+  const rowCells = [
+    r.calcDate, "", "", "", "", "", "",
+    fmt4(r.prices.diesel), fmt2(r.cons.diesel), fmt4(r.prices.diesel), fmt4(r.tarifa.diesel),
+    fmt4(r.prices.gasolina), fmt2(r.cons.gasoline), fmt4(r.prices.gasolina), fmt4(r.tarifa.gasoline),
+  ];
+  return [
+    tr("emailGreeting"), "",
+    tr("emailIntro")(month), "",
+    headerCells.join("\t"),
+    rowCells.join("\t"), "", "",
+    `${fmt4(r.tarifa.diesel)} → ${tr("diesel")}`,
+    `${fmt4(r.tarifa.gasoline)} → ${tr("gasoline")}`, "",
+    tr("emailThanks"), "",
+    tr("emailBest"),
+    senderName || (state.lang === "es" ? "[Tu nombre]" : "[Your name]"),
+    senderRole || "Accounting Spain",
+  ].join("\n");
+}
+
+function showResult() {
+  const r = state.result;
+  $("rsDieselCons").textContent = r.cons.diesel  != null ? num2.format(r.cons.diesel)  : "—";
+  $("rsGasCons").textContent    = r.cons.gasoline != null ? num2.format(r.cons.gasoline) : "—";
+  $("rsFleet").textContent      = intFmt.format(r.fleetCount);
+  renderEmailPreview(r, $("senderName").value.trim(), $("senderRole").value.trim());
+  $("resultSection").style.display = "";
+  $("resultSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("buildBtn").addEventListener("click", async () => {
+  $("buildBtn").disabled = true;
+  $("resultSection").style.display = "none";
+  try {
+    await build();
+    showResult();
+    setStatus("buildStatus", "Done. Download the workbook below or copy the email draft.", "ok");
+  } catch (e) {
+    console.error(e);
+    setStatus("buildStatus", `Failed: ${e.message}`, "err");
+  } finally {
+    updateBuildBtn();
+  }
+});
+
+$("dlBtn").addEventListener("click", () => {
+  if (!state.result) return;
+  const blob = new Blob([state.result.bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = state.result.suggestedName;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+$("copyBtn").addEventListener("click", async () => {
+  if (!state.result) return;
+  const text = buildEmailPlainText(state.result, $("senderName").value.trim(), $("senderRole").value.trim());
+
+  // Try the rich (HTML + plain) clipboard first — pastes as a real Outlook table.
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      const html = $("emailPreview").innerHTML;
+      const item = new ClipboardItem({
+        "text/html":  new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+      setStatus("buildStatus", "Email draft copied (with formatting). Paste into Outlook.", "ok");
+      return;
+    }
+  } catch (_) {}
+
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("buildStatus", "Email draft copied as plain text. Paste into Outlook.", "ok");
+  } catch {
+    const sel = window.getSelection();
+    sel.selectAllChildren($("emailPreview"));
+    setStatus("buildStatus", "Couldn't auto-copy — preview is selected; press Ctrl+C.", "");
+  }
+});
+
+$("resetBtn").addEventListener("click", () => {
+  ["flotaFile", "liqFile"].forEach((id) => { $(id).value = ""; });
+  state.flotaFile = state.liqFile = state.result = null;
+  $("flotaPicked").textContent = "";
+  $("liqPicked").textContent = "";
+  $("resultSection").style.display = "none";
+  setStatus("buildStatus", "");
+  updateBuildBtn();
+});
+
+$("refreshBtn").addEventListener("click", refreshPrices);
+
+$("langEn").addEventListener("click", () => applyLanguage("en"));
+$("langEs").addEventListener("click", () => applyLanguage("es"));
+
+// Initial language + auto-fetch prices on first load.
+applyLanguage(localStorage.getItem("lang") || (navigator.language?.startsWith("es") ? "es" : "en"));
+$("langEn").addEventListener("click", () => localStorage.setItem("lang", "en"));
+$("langEs").addEventListener("click", () => localStorage.setItem("lang", "es"));
+refreshPrices();
 </script>
 
 </body>
