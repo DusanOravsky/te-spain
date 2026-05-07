@@ -135,14 +135,25 @@ function setStatus(msg, cls = "") {
   $("status").className = "status" + (cls ? " " + cls : "");
 }
 
+function normalizeRepo(input) {
+  let s = (input || "").trim();
+  if (!s) return "";
+  // Accept "https://github.com/owner/repo", "github.com/owner/repo", "owner/repo", with or without trailing slash / .git
+  s = s.replace(/^https?:\/\//i, "").replace(/^github\.com\//i, "");
+  s = s.replace(/\.git$/i, "").replace(/\/+$/g, "");
+  // Keep only the first two path segments (owner/repo) in case extra path bits got pasted
+  const parts = s.split("/").filter(Boolean);
+  return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : s;
+}
+
 function getCfg() {
-  const repo = localStorage.getItem("gh.repo") || "";
+  const repo = normalizeRepo(localStorage.getItem("gh.repo") || "");
   const token = localStorage.getItem("gh.token") || "";
   const branch = localStorage.getItem("gh.branch") || "main";
   return { repo, token, branch };
 }
 function setCfg(cfg) {
-  localStorage.setItem("gh.repo", cfg.repo);
+  localStorage.setItem("gh.repo", normalizeRepo(cfg.repo));
   localStorage.setItem("gh.token", cfg.token);
   localStorage.setItem("gh.branch", cfg.branch);
 }
