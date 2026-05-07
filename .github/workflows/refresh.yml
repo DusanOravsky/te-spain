@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: refresh
@@ -16,8 +17,13 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    env:
+      DATA_BRANCH: refresh-data
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -28,14 +34,40 @@ jobs:
 
       - run: python refresh.py
 
-      - name: Commit data.json
+      - name: Push data.json to refresh branch
+        id: push
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           if git diff --quiet -- data.json; then
-            echo "No change in data.json"
-          else
-            git add data.json
-            git commit -m "Refresh fuel prices ($(date -u +'%Y-%m-%d %H:%MZ'))"
-            git push
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No change in data.json — skipping PR."
+            exit 0
           fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+          # Reset the data branch to current main, apply the data.json change, and push.
+          git checkout -B "$DATA_BRANCH"
+          git add data.json
+          git commit -m "Refresh fuel prices ($(date -u +'%Y-%m-%d %H:%MZ'))"
+          git push --force-with-lease origin "$DATA_BRANCH"
+
+      - name: Open or update PR
+        if: steps.push.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          existing=$(gh pr list --head "$DATA_BRANCH" --base main --state open --json number --jq '.[0].number' || true)
+          title="Refresh fuel prices ($(date -u +'%Y-%m-%d'))"
+          body="Automated refresh of \`data.json\` from geoportalgasolineras.es. Triggered via \`workflow_dispatch\`."
+          if [ -z "$existing" ]; then
+            url=$(gh pr create --base main --head "$DATA_BRANCH" --title "$title" --body "$body")
+            number=$(echo "$url" | grep -oE '[0-9]+$')
+          else
+            number="$existing"
+            gh pr edit "$number" --title "$title" --body "$body"
+          fi
+          echo "PR #$number"
+          gh pr merge "$number" --auto --squash || \
+            echo "Auto-merge could not be enabled (org may not permit it; PR is open for manual merge)."

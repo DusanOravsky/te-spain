@@ -125,6 +125,9 @@
 const WORKFLOW_FILE = "refresh.yml";
 const POLL_INTERVAL_MS = 4000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+// After workflow completes, wait up to ~10 min for the PR to auto-merge into main.
+const DATA_POLL_INTERVAL_MS = 5000;
+const DATA_POLL_MAX_TRIES = 120;
 
 const numFmt = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
 const intFmt = new Intl.NumberFormat("es-ES");
@@ -172,7 +175,11 @@ function renderFuel(elPriceId, elMetaId, fuel) {
     + `min ${numFmt.format(fuel.min)} · max ${numFmt.format(fuel.max)}`;
 }
 
+let CURRENT_DATA = null;
+function getCurrentData() { return CURRENT_DATA; }
+
 function render(data) {
+  CURRENT_DATA = data;
   renderFuel("g95-price", "g95-meta", data.fuels?.gasolina_95_e5);
   renderFuel("da-price", "da-meta", data.fuels?.gasoleo_a);
   const parts = [];
@@ -220,7 +227,12 @@ async function dispatchWorkflow() {
   );
   if (!r.ok) {
     let msg = `dispatch failed: ${r.status}`;
-    try { msg += " — " + (await r.json()).message; } catch {}
+    try {
+      const body = await r.json();
+      if (body.message) msg += " — " + body.message;
+      if (body.documentation_url) msg += "  (" + body.documentation_url + ")";
+    } catch {}
+    console.error("dispatch error", msg);
     throw new Error(msg);
   }
 }
@@ -272,13 +284,16 @@ async function refresh() {
     if (run.conclusion !== "success") {
       throw new Error(`Workflow finished with status: ${run.conclusion}`);
     }
-    setStatus("Loading new data…");
+    setStatus("Workflow done. Waiting for PR auto-merge…");
+    const before = JSON.stringify(getCurrentData());
     let ok = false;
-    for (let i = 0; i < 5 && !ok; i++) {
-      await new Promise((res) => setTimeout(res, 1500));
-      ok = await loadData();
+    for (let i = 0; i < DATA_POLL_MAX_TRIES; i++) {
+      await new Promise((res) => setTimeout(res, DATA_POLL_INTERVAL_MS));
+      const loaded = await loadData();
+      if (loaded && JSON.stringify(getCurrentData()) !== before) { ok = true; break; }
+      setStatus(`Waiting for PR auto-merge… (${i + 1})`);
     }
-    if (!ok) throw new Error("Workflow finished but data.json didn't load. Try clicking again in a minute.");
+    if (!ok) throw new Error("Workflow done but data.json on main didn't change. The PR may need manual merge — check the repo's Pull Requests tab.");
     setStatus("Updated.", "ok");
   } catch (e) {
     setStatus(`Failed: ${e.message}`, "err");
