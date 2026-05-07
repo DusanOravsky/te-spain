@@ -4,56 +4,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-Automation of Covestro Spain's monthly fuel-price liquidation: the user gathers Spanish national fuel-station prices and the latest fleet roster from a vendor, computes consumption-weighted tarifas, and emails the result to colleagues. The project explores the right shape for that automation given the user's corporate environment.
+A small web app that shows the Spain national average prices for **Gasolina 95 E5** and **Gasóleo A**, fetched live from the Spanish Ministry of Energy's REST API. The user opens `index.html` from disk and clicks **Download prices**.
 
-## Current direction (2026-05-07)
+Originally part of a larger month-end fuel-liquidation workflow (vendor fleet file → Liquidaciones workbook → tarifa email). The price-display side is now a finished one-file static page; the broader workflow is parked (see "What's parked" below).
 
-**Power Automate flow in Covestro's M365 tenant.** The flow:
+## Architecture (current)
 
-- Fetches `preciosEESS_es.xls` server-side (no CORS, no TLS-chain pain on Microsoft's side)
-- Reads the newest `Flota Viva Covestro *.xlsx` from a SharePoint/OneDrive folder
-- Computes price + consumption averages
-- Writes them into row 145 of `Liquidaciones de combustible …xlsx` via the Excel Online connector
-- Creates an Outlook draft with the email body inline
+```
+   index.html  ──fetch──►  https://sedeaplicaciones.minetur.gob.es/
+   (file:// or                ServiciosRESTCarburantes/
+   anywhere)                  PreciosCarburantes/EstacionesTerrestres/
+                              (CORS-open JSON, ~12 MB, ~11,400 stations)
+        │
+        ▼
+   averages two columns
+   ("Precio Gasolina 95 E5", "Precio Gasoleo A")
+   skipping empty cells, displays cards
+```
 
-User's monthly job: drop vendor file in folder → review draft → click Send.
+That's the whole app. Single file. No build step, no SheetJS, no proxy, no backend, no install.
 
-The flow is **not yet built** — gating questions on SharePoint location, trigger model, sender mailbox, recipients, and HTTP-action availability in Dusan's M365 plan are still open.
+## Why this works (and didn't, for ages)
 
-## Why this shape
+The original data source we reached for was `https://geoportalgasolineras.es/.../preciosEESS_es.xls`. That URL **does not send CORS headers**, so a browser can't fetch it from any other origin (including `null` / `file://`). That CORS wall blocked every "static HTML" plan we tried.
 
-Every other architecture hit a wall in the Covestro environment. See `memory/project_covestro_constraints.md` for full detail; summary:
+The same data is **also** published as a JSON REST API at `sedeaplicaciones.minetur.gob.es`, on a different domain, **with `Access-Control-Allow-Origin: *`**. Once we found that endpoint, the simple "static HTML with a button" architecture became possible. See `memory/reference_geoportal_api.md` for the full endpoint reference.
 
-- **Browser-only static HTML** can't fetch the geoportal — no CORS headers.
-- **GitHub Actions + Pages** can't commit the result back — `cov-secure-policy` requires PR + CodeQL.
-- **Local Python / .exe** — Python isn't installed, .exes are blocked.
-- **Excel + Power Query alone** works (see `SETUP.md`) but still requires the user to refresh manually and run a VBA close-month macro.
-- **External hosting** (Cloudflare Worker, Azure Function) was rejected by the user.
+## Key technical facts
 
-Power Automate is the first option that's both fully automated and inside Covestro's already-approved infrastructure.
+- **API endpoint**: `https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/` (GET, JSON, CORS-open).
+- **JSON keys differ from .xls column names** — JSON uses `Precio Gasolina 95 E5` (capitalized) and `Precio Gasoleo A` (no accent on "Gasoleo"). The .xls had lowercase keys with accents.
+- **Spanish decimal comma** — every price is a string like `"1,449"`. Normalize `,` → `.` before parsing as Number.
+- **Empty string** means "this station doesn't sell that fuel" — skip it from the average, don't treat as zero.
+- **Snapshot timestamp** is on the top-level `Fecha` field of the JSON, format `dd/MM/yyyy HH:mm:ss`.
 
-## What's currently in this repo
+## Files in the repo
 
-- **`index.html`** — static HTML with three file pickers (vendor / Liquidaciones / preciosEESS .xls). Browser-side merge via SheetJS; produces an updated Liquidaciones xlsx + an email draft. Verified end-to-end against `docs/`. **Kept as a fallback** for one-off use; not the production path.
-- **`fuel_prices.xlsx`** — small Power Query workbook the user wired himself. Auto-refreshes the geoportal on open and writes Gasolina 95 E5 / Gasóleo A averages to a `Prices` sheet. Useful M-code reference.
-- **`SETUP.md`** — detailed instructions for the **Excel + PQ + VBA fallback** path (Tier 1 in our planning conversation). 7 steps; ~15 min one-time setup. Use this if Power Automate falls through.
-- **`docs/`** (gitignored) — reference fixtures: vendor file, current Liquidaciones, sample preciosEESS .xls. Internal Covestro data — don't commit.
+- **`index.html`** — the entire app. ~190 lines, no external deps at runtime.
+- **`fuel_prices.xlsx`** — Power Query workbook (the user wired this himself; auto-refreshes from the .xls on open). Independent of `index.html`. Could be migrated to use the JSON API instead of the .xls — small M-code change.
+- **`SETUP.md`** — Excel + Power Query + VBA recipe for a more ambitious automation (read vendor file, write to Liquidaciones, generate email). Not built; documented as a fallback if the broader month-end workflow needs to be picked up.
+- **`docs/`** (gitignored) — internal Covestro reference fixtures. Don't commit.
 
-## Key technical facts (the things that have bitten us)
+## What's parked (not gone, not active)
 
-- The geoportal serves real **BIFF** (`.xls`, CDFV2), not `.xlsx`. Tools that handle it: SheetJS, `xlrd` 2.x, Excel, Power Query. Tools that don't: `openpyxl`.
-- The geoportal **does not send CORS headers**. Browsers (any origin including `null` / `file://`) block fetches. Server-side fetchers are fine.
-- Header is on row 4 (index 3); data from row 5. Snapshot timestamp in cell `B1`. Spanish decimal comma (`1,449`) — normalize before parsing.
-- The geoportal **TLS chain is incomplete** — strict verification fails on clean runners. `curl -k` or `ssl._create_unverified_context()` are acceptable mitigations because the data is public and unauthenticated.
-- The Liquidaciones email-snippet structure is unusual: the table is **in the middle of the sheet** (header on row 144, current month on row 145, history above). The user copies header + one row into Outlook each month. Anything that automates this needs to write to row 145 and leave the surrounding structure alone. Old `consumo` pivot at `consumo!E8/E17` feeds I and M via `GETPIVOTDATA` — replaced in our automation by direct averages computed from the vendor file.
+A more ambitious flow combines (a) live prices, (b) a vendor "Flota Viva" Excel file from Ayvens, (c) the running `Liquidaciones de combustible` workbook, into one updated workbook plus an email draft. This would replace the user's current ~15 minute monthly process. Two paths are designed and ready if needed:
 
-## Org / git
+- **Power Automate flow** (in Covestro's M365 tenant) — fully automated; user just reviews the Outlook draft.
+- **Excel + Power Query + VBA** workbook — see `SETUP.md`; user clicks Refresh All + a "Close month" button.
 
-Repo: `covestro/accounting-spain-gas` (private, SSO, `cov-secure-policy` rules). `git push` works through SSO-authorized cached credentials — never embed tokens in URLs or pipe them through chat. See `memory/feedback_no_chat_tokens.md`.
+Neither was built because the immediate ask was "show me the two prices on a web page", which the current `index.html` does cleanly.
 
-## Out of scope
+## When changing this
 
-- Power BI / Power Apps frontends — over-engineered for this volume of work.
-- Standalone executables — corporate environment blocks them.
-- Public hosting (Vercel, Cloudflare, Render) — rejected by the user.
-- Auto-approving the bot's PR to bypass `cov-secure-policy` — declined as a policy-evasion pattern.
+- **Don't switch the price source back to the .xls.** It re-introduces the CORS wall and the BIFF-parsing pain. If extra fields are needed, they're almost certainly in the JSON.
+- **Don't add a build step.** This is one HTML file, deliberately. No bundlers, no frameworks. The whole point is "the user double-clicks it."
+- If the API ever returns 5xx or changes shape, the failure modes the user would see: `Failed: HTTP …` in the status line. The page does not retry on its own.
+
+## Repo / git
+
+`covestro/accounting-spain-gas` (private, SSO, `cov-secure-policy` rules on `main`). Push works through SSO-cached credentials — never embed tokens in URLs or chat. See `memory/feedback_no_chat_tokens.md`.
