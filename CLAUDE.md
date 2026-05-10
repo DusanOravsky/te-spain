@@ -61,6 +61,14 @@ JSON keys are slightly different from the .xls column names:
 - `Precio Gasolina 95 E5` (capitalised)
 - `Precio Gasoleo A` (no accent on "Gasoleo")
 
+## Hourly snapshot drift (not a bug)
+
+The Ministry's feed regenerates **hourly** and overwrites the previous snapshot — past hours are not archived. If the user downloads `preciosEESS_es_<date>.xls` at 11:00 to spot-check, and the tool fetched the JSON at 12:00, the two sources describe Spain at different moments. Averages can differ by ~0.001–0.005 €/L for that reason alone. Confirmed: David's 08/05/2026 11:00 .xlsx → Gasóleo A 1.7240; tool's 12:00 snapshot → 1.7224. Same .xlsx for Gasolina 95 = 1.5467 in both.
+
+Don't treat "tool ≠ manual by ~0.001" as a tool bug — first check `state.prices.snapshot` against cell B1 of the user's .xls.
+
+**Pending (2026-05-10):** optional Step 1B prices-file picker — if user drops the `preciosEESS_es_<date>.xlsx`, tool averages cols J + O directly from that file; else falls back to live API. Makes manual = automatic by construction. Awaiting David's go-ahead via Dusan before implementing.
+
 ## Internationalisation
 
 Two languages, EN and ES, switched via header toggle (defaults to ES if browser language starts with "es"; persists in `localStorage`). All UI strings, the help section, and email body strings (greeting, intro, sign-off, "Diesel"/"Gasoline" → "Gasoil"/"Gasolina", month names) come from a `I18N` dictionary near the top of the script.
